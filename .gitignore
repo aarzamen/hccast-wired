@@ -1,0 +1,41 @@
+# Local environments and Python products
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Private planning, evidence, and run products
+.superpowers/
+docs/superpowers/
+logs/
+evidence/
+output/
+tmp/
+MANIFEST.sha256
+test-pattern-*.h264
+platform-probe.txt
+
+# Local editor and operating-system state
+.DS_Store
+.idea/
+.vscode/
+.env
+.env.*
+
+# Legacy or unsafe publication candidates
+scripts/install.sh
+scripts/pipe-jetson-gstreamer.sh
+scripts/pipe-x11-ffmpeg.sh
+scripts/run-direct-aoa-test.sh
+scripts/run-gadget-handshake.sh
+scripts/run-gadget-test.sh
+scripts/start-xvfb-ui.sh

@@ -1,0 +1,17 @@
+# Normalize repository text consistently across platforms.
+* text=auto eol=lf
+
+# Media and opaque binary formats are never text-normalized.
+*.apk binary
+*.bin binary
+*.der binary
+*.gif binary
+*.heic binary
+*.jpeg binary
+*.jpg binary
+*.mov binary
+*.mp4 binary
+*.pdf binary
+*.png binary
+*.webp binary
+*.zip binary

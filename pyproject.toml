@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hccast-wired"
+version = "0.2.0"
+description = "Experimental wired Linux driver for DrongScreen/HCCAST/ElfCast selfie monitors"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "Aaron Arzamendi"}]
+license = {text = "MIT"}
+dependencies = []
+
+[project.optional-dependencies]
+host = ["pyusb>=1.2.1"]
+dev = ["pytest>=8", "mypy>=1.8", "ruff>=0.5", "pyusb>=1.2.1"]
+
+[project.scripts]
+hccast-wired = "hccast_wired.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_ignores = true
+strict = true
