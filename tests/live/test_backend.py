@@ -51,6 +51,14 @@ TIMING = BackendTiming(
     kill_reap=0.25,
     poll_interval=0.005,
 )
+PORTABLE_SINGLE_ARG_LIMIT = 120_000
+PIPE_PRESSURE_SIZE = 96_000
+POST_HANDSHAKE_REPETITIONS = 6_000
+
+
+def test_embedded_fixture_payloads_fit_linux_single_argument_limit() -> None:
+    assert PIPE_PRESSURE_SIZE < PORTABLE_SINGLE_ARG_LIMIT
+    assert len("after-handshake-" * POST_HANDSHAKE_REPETITIONS) < PORTABLE_SINGLE_ARG_LIMIT
 
 
 def _spec(
@@ -670,7 +678,7 @@ def test_local_lifecycle_orders_startup_logs_pipes_bytes_and_final_reason(tmp_pa
 
 
 def test_source_and_encoder_pressure_is_continuously_drained_and_logged(tmp_path: Path) -> None:
-    pressure = "x" * 180_000
+    pressure = "x" * PIPE_PRESSURE_SIZE
     openbox = _spec(
         "openbox",
         "-c",
@@ -792,7 +800,7 @@ def test_marker_only_stdout_eof_is_incomplete_handshake_json(tmp_path: Path) -> 
 
 
 def test_gadget_stderr_pressure_does_not_deadlock_json_and_is_logged(tmp_path: Path) -> None:
-    pressure = "z" * 180_000
+    pressure = "z" * PIPE_PRESSURE_SIZE
     code = (
         "import sys; "
         f"sys.stderr.write({pressure!r}); sys.stderr.write('\\nTX SETR device-info request\\n'); "
@@ -816,7 +824,7 @@ def test_gadget_stderr_pressure_does_not_deadlock_json_and_is_logged(tmp_path: P
 
 
 def test_gadget_drain_continues_logging_after_handshake_without_queue(tmp_path: Path) -> None:
-    after = "after-handshake-" * 10_000
+    after = "after-handshake-" * POST_HANDSHAKE_REPETITIONS
     code = (
         "import sys; print('Enumerating directly as Android Open Accessory'); "
         "print('TX SETR device-info request',file=sys.stderr); "
