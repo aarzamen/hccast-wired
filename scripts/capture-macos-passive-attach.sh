@@ -57,6 +57,8 @@ done
 
 observe_seconds="${OBSERVE_SECONDS:-$default_observe_seconds}"
 ioreg_poll_interval="${IOREG_POLL_INTERVAL:-0.05}"
+observer_ready_attempts="${OBSERVER_READY_ATTEMPTS:-100}"
+observer_ready_interval="${OBSERVER_READY_INTERVAL:-0.02}"
 
 profiler_types="$(system_profiler -listDataTypes 2>/dev/null || true)"
 if printf '%s\n' "$profiler_types" | rg -q '^[[:space:]]*SPUSBHostDataType[[:space:]]*$'; then
@@ -232,6 +234,29 @@ rapid_ioreg_watch() {
     printf '%s\n' "$sequence" > "$out/ioreg-rapid-sample-count.txt"
     sleep "$ioreg_poll_interval"
   done
+}
+
+wait_for_observers() {
+  local attempt sample_count
+  for ((attempt = 0; attempt < observer_ready_attempts; attempt += 1)); do
+    if ! kill -0 "$whatcable_watch_pid" >/dev/null 2>&1; then
+      printf 'WhatCable watcher ended before observation readiness\n' \
+        >> "$out/observer-errors.txt"
+      return 0
+    fi
+    if ! kill -0 "$ioreg_watch_pid" >/dev/null 2>&1; then
+      printf 'IORegistry watcher ended before observation readiness\n' \
+        >> "$out/observer-errors.txt"
+      return 0
+    fi
+    sample_count="$(cat "$out/ioreg-rapid-sample-count.txt" 2>/dev/null || printf '0')"
+    if [[ "$sample_count" -gt 0 ]]; then
+      return 0
+    fi
+    sleep "$observer_ready_interval"
+  done
+  printf 'Observers did not become ready within the bounded readiness wait\n' \
+    >> "$out/observer-errors.txt"
 }
 
 stop_job() {
@@ -520,6 +545,7 @@ whatcable --watch --json > "$out/whatcable-watch.ndjson" \
 whatcable_watch_pid=$!
 rapid_ioreg_watch &
 ioreg_watch_pid=$!
+wait_for_observers
 
 if [[ "$start_mode" == "off-boot" ]]; then
   cat <<ARMED

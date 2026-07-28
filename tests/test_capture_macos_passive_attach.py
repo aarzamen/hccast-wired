@@ -79,10 +79,15 @@ def test_passive_attach_script_has_a_strict_observation_only_boundary() -> None:
     )
     assert precondition_read < log_window_assignment
     observation_sleep = script.rindex('sleep "$observe_seconds"')
+    observer_readiness = script.rindex("wait_for_observers")
+    observation_start = script.rindex(
+        'observation_start_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"'
+    )
     log_end_assignment = script.rindex(
         'log_query_end_local="$(date \'+%Y-%m-%d %H:%M:%S\')"'
     )
     finalization = script.rindex("finalize 0")
+    assert observer_readiness < observation_start < observation_sleep
     assert observation_sleep < log_end_assignment < finalization
 
 

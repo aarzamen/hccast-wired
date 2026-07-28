@@ -52,13 +52,59 @@ TIMING = BackendTiming(
     poll_interval=0.005,
 )
 PORTABLE_SINGLE_ARG_LIMIT = 120_000
-PIPE_PRESSURE_SIZE = 96_000
-POST_HANDSHAKE_REPETITIONS = 6_000
+PIPE_PRESSURE_SIZE = 180_000
+POST_HANDSHAKE_REPETITIONS = 10_000
+
+
+def _source_pressure_code() -> str:
+    return (
+        f"import sys,time; pressure='x'*{PIPE_PRESSURE_SIZE}; "
+        "print(pressure); print(pressure,file=sys.stderr); time.sleep(60)"
+    )
+
+
+def _encoder_pressure_code() -> str:
+    return (
+        f"import sys,time; pressure='x'*{PIPE_PRESSURE_SIZE}; "
+        "print(pressure,file=sys.stderr); sys.stderr.flush(); "
+        "sys.stdout.buffer.write(b'abc'); sys.stdout.buffer.flush(); time.sleep(60)"
+    )
+
+
+def _gadget_stderr_pressure_code() -> str:
+    return (
+        f"import sys; pressure='z'*{PIPE_PRESSURE_SIZE}; "
+        "sys.stderr.write(pressure); sys.stderr.write('\\nTX SETR device-info request\\n'); "
+        "sys.stderr.flush(); print('Enumerating directly as Android Open Accessory'); "
+        "print('HCCAST handshake complete:'); "
+        "print('{\"product\":\"P\",\"version\":\"V\"}'); sys.stdout.flush(); "
+        "sys.stdin.buffer.read()"
+    )
+
+
+def _post_handshake_pressure_code() -> str:
+    return (
+        "import sys; print('Enumerating directly as Android Open Accessory'); "
+        "print('TX SETR device-info request',file=sys.stderr); "
+        "print('HCCAST handshake complete:'); "
+        "print('{\"product\":\"P\",\"version\":\"V\"}'); "
+        f"after='after-handshake-'*{POST_HANDSHAKE_REPETITIONS}; "
+        "print(after); sys.stdout.flush(); sys.stderr.flush(); sys.stdin.buffer.read()"
+    )
 
 
 def test_embedded_fixture_payloads_fit_linux_single_argument_limit() -> None:
-    assert PIPE_PRESSURE_SIZE < PORTABLE_SINGLE_ARG_LIMIT
-    assert len("after-handshake-" * POST_HANDSHAKE_REPETITIONS) < PORTABLE_SINGLE_ARG_LIMIT
+    post_handshake = "after-handshake-" * POST_HANDSHAKE_REPETITIONS
+    fixture_code = (
+        _source_pressure_code(),
+        _encoder_pressure_code(),
+        _gadget_stderr_pressure_code(),
+        _post_handshake_pressure_code(),
+    )
+
+    assert PIPE_PRESSURE_SIZE > 64_000
+    assert len(post_handshake) > 64_000
+    assert max(len(code.encode()) for code in fixture_code) < PORTABLE_SINGLE_ARG_LIMIT
 
 
 def _spec(
@@ -682,13 +728,12 @@ def test_source_and_encoder_pressure_is_continuously_drained_and_logged(tmp_path
     openbox = _spec(
         "openbox",
         "-c",
-        f"import sys,time; print({pressure!r}); print({pressure!r},file=sys.stderr); time.sleep(60)",
+        _source_pressure_code(),
     )
     encoder = _spec(
         "encoder",
         "-c",
-        f"import sys,time; print({pressure!r},file=sys.stderr); sys.stderr.flush(); "
-        "sys.stdout.buffer.write(b'abc'); sys.stdout.buffer.flush(); time.sleep(60)",
+        _encoder_pressure_code(),
     )
     plan = _plan(tmp_path, openbox=openbox, encoder=encoder)
     factory, _, launcher = _factory(tmp_path, plan)
@@ -801,15 +846,10 @@ def test_marker_only_stdout_eof_is_incomplete_handshake_json(tmp_path: Path) -> 
 
 def test_gadget_stderr_pressure_does_not_deadlock_json_and_is_logged(tmp_path: Path) -> None:
     pressure = "z" * PIPE_PRESSURE_SIZE
-    code = (
-        "import sys; "
-        f"sys.stderr.write({pressure!r}); sys.stderr.write('\\nTX SETR device-info request\\n'); "
-        "sys.stderr.flush(); print('Enumerating directly as Android Open Accessory'); "
-        "print('HCCAST handshake complete:'); "
-        "print('{\"product\":\"P\",\"version\":\"V\"}'); sys.stdout.flush(); "
-        "sys.stdin.buffer.read()"
+    plan = _plan(
+        tmp_path,
+        gadget=_spec("gadget-stream", "-c", _gadget_stderr_pressure_code()),
     )
-    plan = _plan(tmp_path, gadget=_spec("gadget-stream", "-c", code))
     factory, _, launcher = _factory(tmp_path, plan)
     _, result, events = _run(factory)
     assert result is not None and result.error == "encoder-exited"
@@ -825,15 +865,12 @@ def test_gadget_stderr_pressure_does_not_deadlock_json_and_is_logged(tmp_path: P
 
 def test_gadget_drain_continues_logging_after_handshake_without_queue(tmp_path: Path) -> None:
     after = "after-handshake-" * POST_HANDSHAKE_REPETITIONS
-    code = (
-        "import sys; print('Enumerating directly as Android Open Accessory'); "
-        "print('TX SETR device-info request',file=sys.stderr); "
-        "print('HCCAST handshake complete:'); "
-        "print('{\"product\":\"P\",\"version\":\"V\"}'); "
-        f"print({after!r}); sys.stdout.flush(); sys.stderr.flush(); sys.stdin.buffer.read()"
-    )
     encoder = _source(tmp_path, "encoder")
-    plan = _plan(tmp_path, gadget=_spec("gadget-stream", "-c", code), encoder=encoder)
+    plan = _plan(
+        tmp_path,
+        gadget=_spec("gadget-stream", "-c", _post_handshake_pressure_code()),
+        encoder=encoder,
+    )
     factory, _, launcher = _factory(tmp_path, plan)
     interrupted = threading.Event()
     attempt = cast(SubprocessAttempt, factory.create(LiveConfig(mode=DesiredMode.DESKTOP)))
