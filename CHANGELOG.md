@@ -14,6 +14,10 @@
   efficiency and performance improvements.
 - Keep the legacy HCCAST MIT license and separate PanelBridge GPL-3.0-or-later
   license, notices and source boundaries.
+- Keep privileged-helper fixtures in private directories so their path checks
+  run on Linux without weakening the production permission checks.
+- Publish passive-capture sample counts atomically so interrupted cleanup does
+  not erase evidence of completed samples.
 
 ## Unreleased — Fable handoff and platform reproduction
 

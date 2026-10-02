@@ -541,6 +541,58 @@ def test_other_new_vid_pid_is_reported_without_assuming_hccast(tmp_path: Path) -
     assert "do not assume this is HCCAST" in summary
 
 
+def test_interrupting_a_later_count_write_preserves_completed_samples(
+    tmp_path: Path,
+) -> None:
+    project, env = _stage_fake_project(tmp_path, mode="other")
+    counter_block_file = tmp_path / "counter-write-started.txt"
+    printf_hook = tmp_path / "pause-counter-printf.sh"
+    printf_hook.write_text(
+        textwrap.dedent(
+            r"""
+            printf() {
+              if [[ "${sequence:-0}" == "2" && "${1:-}" == '%s\n' \
+                    && "${2:-}" == "2" && "$#" == "2" ]]; then
+                builtin printf ready > "$COUNTER_BLOCK_FILE"
+                for ((counter_attempt=0;counter_attempt<300;counter_attempt+=1)); do
+                  /bin/sleep 0.01
+                done
+              fi
+              builtin printf "$@"
+            }
+            """
+        ).lstrip()
+    )
+    env["BASH_ENV"] = str(printf_hook)
+    env["COUNTER_BLOCK_FILE"] = str(counter_block_file)
+    # End the observation when the second write is blocked after its output
+    # redirection. Cleanup then interrupts that write, leaving the first sample.
+    _write_executable(
+        tmp_path / "fake-bin" / "sleep",
+        r"""
+        #!/usr/bin/env bash
+        if [[ "${1:-}" == "0.12" ]]; then
+          for ((attempt=0;attempt<200;attempt+=1)); do
+            if [[ -s "$COUNTER_BLOCK_FILE" ]]; then exit 0; fi
+            /bin/sleep 0.01
+          done
+          exit 1
+        fi
+        exec /bin/sleep "$@"
+        """,
+    )
+
+    completed = _run_staged(project, env)
+
+    assert completed.returncode == 0, completed.stderr
+    assert counter_block_file.read_text() == "ready"
+    capture = _only_capture(project)
+    assert (capture / "observer-errors.txt").read_text() == ""
+    assert (capture / "ioreg-rapid-sample-count.txt").read_text() == "1\n"
+    assert "abcd:0002" in (capture / "new-vidpid-unique.tsv").read_text()
+    assert "OTHER_VID_PID_OBSERVED" in (capture / "SUMMARY.md").read_text()
+
+
 def test_usb2_attach_plus_address_failure_gets_specific_classification(tmp_path: Path) -> None:
     project, env = _stage_fake_project(tmp_path, mode="usb2-fail")
 

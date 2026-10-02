@@ -48,7 +48,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 2
 fi
 
-for required in whatcable system_profiler ioreg log rg awk sort diff grep wc tr; do
+for required in whatcable system_profiler ioreg log rg awk sort diff grep wc tr mv; do
   if ! command -v "$required" >/dev/null 2>&1; then
     echo "Required observation command is unavailable: $required" >&2
     exit 2
@@ -196,6 +196,7 @@ pair_in_file() {
 rapid_ioreg_watch() {
   local sequence=0 snapshot current timestamp vidpid service status
   local current_file="$out/.ioreg-current-vidpid.tsv"
+  local sample_count_tmp="$out/.ioreg-rapid-sample-count.tmp"
   trap 'exit 0' TERM INT
 
   while :; do
@@ -231,7 +232,10 @@ rapid_ioreg_watch() {
       printf '%s\t%s\tNONE\tno IOUSBHostDevice VID:PID records\n' \
         "$timestamp" "$sequence" >> "$out/ioreg-rapid-timeline.tsv"
     fi
-    printf '%s\n' "$sequence" > "$out/ioreg-rapid-sample-count.txt"
+    # Cleanup may interrupt the worker during publication. Keep the last
+    # completed count readable until its replacement is fully written.
+    printf '%s\n' "$sequence" > "$sample_count_tmp"
+    mv -f "$sample_count_tmp" "$out/ioreg-rapid-sample-count.txt"
     sleep "$ioreg_poll_interval"
   done
 }

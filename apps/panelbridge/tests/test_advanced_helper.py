@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from tempfile import TemporaryDirectory
 
 import pytest
 
@@ -39,8 +40,16 @@ class Backend:
 
 
 @pytest.fixture
-def rig(tmp_path):
-    boot, state = tmp_path / "boot", tmp_path / "state"
+def trusted_tmp_path():
+    # The helper checks every ancestor. Linux's default pytest /tmp parent is
+    # writable, so positive fixtures need a private directory in the checkout.
+    with TemporaryDirectory(prefix=".advanced-tests-", dir=Path(__file__).resolve().parents[1]) as directory:
+        yield Path(directory)
+
+
+@pytest.fixture
+def rig(trusted_tmp_path):
+    boot, state = trusted_tmp_path / "boot", trusted_tmp_path / "state"
     boot.mkdir(mode=0o700)
     state.mkdir(mode=0o700)
     (boot / "config.txt").write_text("# stock fixture\n[all]\narm_64bit=1\nauto_initramfs=1\n[cm4]\notg_mode=1\n")
@@ -306,7 +315,7 @@ def test_interrupted_staging_is_restored_without_reboot_or_normal_config_write(r
     assert backend.reboots == []
 
 
-def test_boot_directory_symlink_and_writable_parent_are_rejected(rig):
+def test_boot_directory_symlink_and_writable_directory_are_rejected(rig):
     helper, backend, boot, state, _ = rig
     link = boot.parent / "linked-boot"
     link.symlink_to(boot, target_is_directory=True)
@@ -316,6 +325,20 @@ def test_boot_directory_symlink_and_writable_parent_are_rejected(rig):
     boot.chmod(0o777)
     with pytest.raises(HelperError):
         helper.start_trial(2450)
+    assert backend.reboots == []
+
+
+@pytest.mark.parametrize("mode", [0o770, 0o777, 0o1777])
+def test_writable_ancestor_is_rejected_even_with_private_leaf_directories(rig, mode):
+    helper, backend, boot, state, _ = rig
+    normal = (boot / "config.txt").read_bytes()
+    boot.parent.chmod(mode)
+    assert boot.stat().st_mode & 0o777 == 0o700
+    assert state.stat().st_mode & 0o777 == 0o700
+    with pytest.raises(HelperError, match="UnsafePath"):
+        helper.start_trial(2450)
+    assert (boot / "config.txt").read_bytes() == normal
+    assert not (state / "advanced.json").exists()
     assert backend.reboots == []
 
 
@@ -606,15 +629,15 @@ def test_symlink_rejection_never_touches_target(rig, target):
     assert backend.reboots == []
 
 
-def test_linux_cpu_backend_writes_only_fixed_sysfs_fields(tmp_path):
+def test_linux_cpu_backend_writes_only_fixed_sysfs_fields(trusted_tmp_path):
     values = {"scaling_governor": "ondemand", "scaling_min_freq": "1500000",
               "scaling_max_freq": "2400000", "cpuinfo_max_freq": "2400000",
               "scaling_available_governors": "ondemand powersave performance"}
     for name, value in values.items():
-        (tmp_path / name).write_text(value)
-    controls = LinuxControls(cpu_path=tmp_path.resolve(), trusted_uid=os.getuid())
+        (trusted_tmp_path / name).write_text(value)
+    controls = LinuxControls(cpu_path=trusted_tmp_path.resolve(), trusted_uid=os.getuid())
     assert controls.cpu_snapshot()["max_khz"] == 2400000
     controls.write_cpu("max_khz", 1800000)
-    assert (tmp_path / "scaling_max_freq").read_text() == "1800000\n"
+    assert (trusted_tmp_path / "scaling_max_freq").read_text() == "1800000\n"
     with pytest.raises(HelperError):
         controls.write_cpu("../../outside", "bad")
