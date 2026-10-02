@@ -209,6 +209,12 @@ class Settings:
 
 @dataclass(frozen=True, slots=True)
 class ScreenInfo:
+    """SINF dimensions in the current orientation.
+
+    The legacy ``source_short_side`` and ``source_long_side`` names are retained
+    for callers; their wire slots hold oriented source width and height.
+    """
+
     orientation: int
     encoder_width: int
     encoder_height: int
@@ -247,7 +253,7 @@ class DeviceInfo:
 def _be_u32(payload: bytes, offset: int, default: int = 0) -> int:
     if len(payload) < offset + 4:
         return default
-    return _U32.unpack_from(payload, offset)[0]
+    return int(_U32.unpack_from(payload, offset)[0])
 
 
 def _c_string(payload: bytes) -> str:

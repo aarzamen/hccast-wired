@@ -10,6 +10,36 @@ Wi-Fi, the vendor APK, or a vendor cloud service.
 
 ## Current status
 
+The repository also contains the experimental **PanelBridge** Raspberry Pi
+wireless-display application under `apps/panelbridge/`. Read its
+[development status and resumption steps](apps/panelbridge/README.md).
+Normal desktop output on one Pi 5/EBPSI receiver is hardware-verified, while
+unattended startup, operation with only the panel attached, calibrated presets,
+advanced recovery and clean uninstall acceptance remain incomplete. There is no
+public installer qualified for hassle-free standalone use yet.
+
+The app/firmware static investigation resumed on **2026-09-29**. The
+[current findings](docs/FIRMWARE_AND_APP_REVERSE_ENGINEERING.md) trace
+monitor and remote update clients in HCCast, HCLink and 7RYMS, and recover the
+official Pro image and bundled remote firmware. On the same date, the Qshot V2
+non-Pro displayed one user-selected H.264 image over Jetson USB-A, confirmed by
+the transfer log and a user photograph. A later five-second test established
+visible motion with 25 independent H.264 frames at 5 fps: the user confirmed the
+counter and moving square. Correcting the landscape source dimensions in SINF
+then produced a square block and unstretched numbers, confirmed by the user.
+Subsequent tests sent 50 and then 300 independent frames at 10 fps; the user
+confirmed smooth playback through the full 30-second run. A controlled five-second clip using five keyframes and 45
+predictive frames also played smoothly at 10 fps, with about 80% less video
+data for the same pattern. A later five-second test sent 150 frames at 30 fps,
+and the user confirmed smooth playback. Both predictive configurations are
+`HARDWARE-VERIFIED` on this pairing. Display cadence was not instrumented;
+a later live desktop and browser-video run is also `HARDWARE-VERIFIED` through
+its timed stop after 61.7 seconds. It targeted 30 fps and averaged 29.18 fps in
+transmission; the user confirmed playback was fine before it stopped. A subsequent Mac-controlled
+desktop session completed 306.6 seconds without issues, confirmed by the user,
+with the ending card and clean shutdown. That five-minute configuration is
+`HARDWARE-VERIFIED`. Longer and unattended runs remain untested.
+
 | Claim | Status |
 |---|---|
 | Jetson Orin Nano direct `18d1:2d00` USB gadget | `HARDWARE-VERIFIED` on one configuration |
@@ -17,9 +47,12 @@ Wi-Fi, the vendor APK, or a vendor cloud service.
 | Portrait `SINF` and visible H.264 test video | `HARDWARE-VERIFIED` |
 | Isolated 640x1136 Chromium/Xvfb surface on the panel | `OBSERVED` in bounded supervised runs |
 | macOS direct-host output | Diagnostic observations only; no valid HCCAST session or visible wired output |
-| Raspberry Pi output | Active reproduction target; not yet hardware-verified |
+| Qshot V2 non-Pro on macOS | `OBSERVED` USB diagnostics; interface access denied before an HCCAST request |
+| Qshot V2 non-Pro on Jetson USB-A | `HARDWARE-VERIFIED` SETR → SETV, landscape SINF, visible 1280x720 still, independent-frame motion up to 30 seconds at 10 fps and five-second predictive playback at 30 fps, and live desktop/video for 61.7 seconds with a 30 fps target and corrected landscape proportions; `HC15B100`, version `2511261024` |
+| Qshot V2 Pro firmware | `OBSERVED` offline inspection; compatibility with the non-Pro remains unverified |
+| Raspberry Pi 5 USB host to Qshot V2 non-Pro | `HARDWARE-VERIFIED`: five-second fixture, one-minute video and five-minute Mac-controlled desktop at 1280x720, targeting 30 fps; correct output and control confirmed |
 | R36S and additional monitor revisions | Deferred compatibility targets |
-| Independent second platform or unit | Not yet `REPRODUCED` |
+| Independent second platform | `REPRODUCED`: bounded Qshot host-USB playback on Jetson and Raspberry Pi 5; no second screen unit tested |
 
 The known-good reference path is:
 
@@ -33,8 +66,8 @@ Jetson USB-C device-capable port
   -> visible pixels on the physical screen
 ```
 
-The current engineering objective is to reproduce that same path on a Raspberry
-Pi before expanding features or redesigning the protocol.
+The RK-X40F gadget path above remains a separate, unverified Pi target. The
+Qshot host-USB path has now been reproduced on Pi 5; it does not require a UDC.
 
 ## Why this hardware is useful
 
@@ -77,11 +110,17 @@ B. monitor USB host -> Linux/Android USB gadget
    hardware-verified Jetson identity: 18d1:2d00
 ```
 
-Backend B produced the verified result. The screen configured the FunctionFS
+Backend B produced the reference RK-X40F-family result. The screen configured the FunctionFS
 bulk endpoints and returned a structurally valid 316-byte `SETV` identifying
 product `HCT-AT01`. The generic pre-AOA identity reached FunctionFS enable, but
 this unit did not emit Android Open Accessory requests 51/52/53. Direct
 `18d1:2d00` is therefore the reference path for this unit.
+
+Backend A produced the Qshot V2 non-Pro result: Jetson USB-A host to `05ac:12ad`,
+valid SETV, landscape SINF, a physically visible H.264 still and independent-frame
+motion at 5 and 10 fps, with 30 seconds verified at 10 fps. Five-second predictive
+playback at a 30 fps sending rate is also hardware-verified. This topology does
+not reproduce the reference gadget path.
 
 ## Implemented
 
@@ -104,8 +143,8 @@ this unit did not emit Android Open Accessory requests 51/52/53. Direct
 
 ## Not yet verified
 
-- Raspberry Pi hardware output.
-- A second monitor unit or hardware revision.
+- Raspberry Pi RK-X40F gadget output and Qshot sessions longer than five minutes.
+- HCCAST video output on a second monitor unit or hardware revision.
 - Automatic recovery after cable or screen-power loss.
 - Reboot recovery and persistent service behavior.
 - Audio.
@@ -116,8 +155,22 @@ this unit did not emit Android Open Accessory requests 51/52/53. Direct
 
 ## Raspberry Pi target
 
-Raspberry Pi work is a portability exercise, not a fresh protocol-discovery
-project. A successful reproduction must establish all of the following:
+`HARDWARE-VERIFIED` / `REPRODUCED`, 2026-10-01: Qshot V2 non-Pro host-USB
+playback was reproduced on Raspberry Pi 5 on 2026-10-01: 150 frames at a 30 fps
+sending rate, 1280x720 landscape, with user-confirmed motion and correct
+proportions. A later 60-second isolated desktop and sample-video test is also
+`HARDWARE-VERIFIED`: 1,800 live frames in 60.044873 seconds, followed by
+60 ending-card frames, with user-confirmed correct playback and clean closure.
+
+A subsequent Mac-controlled Pi desktop session is also `HARDWARE-VERIFIED`:
+9,000 live frames in 302.475735 seconds (29.75 fps average transmission),
+then 60 ending frames. The user confirmed correct Mac control and smooth Qshot
+output through the ending card. USB, temporary desktop processes, preview
+listeners and the Mac SSH tunnel closed. Longer Pi sessions remain untested.
+
+
+The separate RK-X40F gadget reproduction remains a portability exercise. It
+must establish all of the following:
 
 1. The selected Pi, kernel, device tree, port, and power topology expose a usable
    USB Device Controller.
@@ -139,7 +192,8 @@ See [the reproduction record](docs/REPRODUCTION.md), the
 The Mac remains useful for development, tests, USB-C/Power Delivery
 instrumentation, and passive/direct-host diagnostics.
 
-`HARDWARE-VERIFIED` observations from the tested Apple Silicon Mac:
+Historical `HARDWARE-VERIFIED` observations from the Apple Silicon Mac with the
+RK-X40F-family unit:
 
 - Direct C-to-C placed the Mac in USB Device role and exposed no addressable
   monitor peripheral.
@@ -153,6 +207,23 @@ instrumentation, and passive/direct-host diagnostics.
 
 These are diagnostic facts, not a functioning macOS display path. The project
 does not currently send video from macOS.
+
+### Qshot V2 checkpoint — 2026-09-27
+
+`OBSERVED`, recorded during the Qshot session: the separately powered non-Pro
+screen exposed `05ac:12ad`, interface `ff/2a/ff`, and stayed present throughout a
+30-second observation. macOS denied interface access with the missing entitlement
+`com.apple.coremedia.valeria.allow`; the single approved probe sent no HCCAST
+payload. No Qshot `SETV` or wired Mac video was established.
+
+`OBSERVED`, recorded during offline inspection: official Qshot V2 Pro firmware
+1.2.7 contains matching USB descriptor templates and HCCast mirroring components.
+`INFERRED`: a shared platform is plausible; firmware interchangeability is
+unverified. No firmware was installed.
+
+At session closeout, the original temporary logs and firmware files were no
+longer present. These are retained session findings, not freshly repeated
+measurements. See the [validation ledger](docs/VALIDATION.md).
 
 ## Software-only development
 
@@ -211,5 +282,10 @@ This is an experimental technical alpha, not clinical software.
 
 ## License
 
-MIT for the original code and documentation in this repository. See
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The legacy HCCAST driver and its original documentation retain the root
+[MIT license](LICENSE); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The application under `apps/panelbridge/`, including its original code, native
+additions, packaging, documentation and artwork, has a separate
+[GPL-3.0-or-later license](apps/panelbridge/LICENSE) and
+[third-party notices](apps/panelbridge/THIRD_PARTY_NOTICES.md). Upstream components
+retain their own licenses and notices.

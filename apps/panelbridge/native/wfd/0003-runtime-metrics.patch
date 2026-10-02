@@ -1,0 +1,12 @@
+--- a/src/wfd/meson.build
++++ b/src/wfd/meson.build
+@@ -4,6 +4,9 @@
+   'wfd-client.c',
+   'pb-wfd-profile.c',
+   'pb-wfd-bridge.c',
++  'pb-wfd-runtime.c',
++  'pb-wfd-telemetry.c',
++  'pb-wfd-frame-meta.c',
+   'wfd-media.c',
+   'wfd-media-factory.c',
+   'wfd-params.c',

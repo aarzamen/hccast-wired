@@ -76,7 +76,7 @@ GStreamer ximagesrc -> x264enc baseline -> access-unit byte stream
 The physical panel displayed a desktop, pointer, Chromium content, and video.
 Those runs remain bounded observations rather than a persistent-service claim.
 
-## Raspberry Pi parity sequence
+## Raspberry Pi RK-X40F gadget parity sequence
 
 Raspberry Pi work should change one platform layer at a time while preserving the
 known protocol sequence.
@@ -139,4 +139,30 @@ and supervised stability without changing the protocol layer simultaneously.
 - One successful Pi physical run: `HARDWARE-VERIFIED` for that named Pi/image.
 - A second independent unit or platform: potentially `REPRODUCED`, after review.
 
-The Jetson result remains the sole hardware-verified source-platform result today.
+The Jetson remains the hardware-verified RK-X40F gadget reference. Qshot
+host-USB fixture playback has also been verified on Pi 5, as recorded below.
+
+## Qshot host-USB reproduction on Pi 5 — 2026-10-01
+
+Qshot V2 non-Pro host-USB playback was reproduced on Raspberry Pi 5 on
+2026-10-01: 150 frames at a 30 fps sending rate, 1280x720 landscape, with user-confirmed motion and correct proportions. A later 60-second isolated desktop and sample-video test is also
+`HARDWARE-VERIFIED`: 1,800 live frames in 60.044873 seconds, followed by
+60 ending-card frames, with user-confirmed correct playback and clean closure.
+
+A subsequent Mac-controlled Pi desktop session is also `HARDWARE-VERIFIED`:
+9,000 live frames in 302.475735 seconds (29.75 fps average transmission),
+then 60 ending frames. The user confirmed correct Mac control and smooth Qshot
+output through the ending card. USB, temporary desktop processes, preview
+listeners and the Mac SSH tunnel closed. Longer Pi sessions remain untested.
+
+
+This route uses the Pi as USB host and the Qshot as `05ac:12ad`; it does not
+use ConfigFS, FunctionFS, or the gadget sequence above. The test preserved
+the Qshot identity, HCCAST framing, landscape SINF, and previously verified
+150-frame fixture. All writes matched, USB closed, and the user confirmed
+correct playback. See [VALIDATION.md](VALIDATION.md) for scope and measurements.
+
+The live checkpoint used an isolated Xvfb/Openbox/Chromium desktop with software
+x264 encoding. The existing physical desktop and touchscreen configuration was
+preserved. Pi desktop control from the Mac was subsequently verified for five minutes;
+longer sessions remain untested.

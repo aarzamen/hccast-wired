@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>PanelBridge</title>
+  <desc>Two display panels joined by a geometric bridge. Original project icon.</desc>
+  <rect x="6" y="6" width="116" height="116" rx="24" fill="#15354A"/>
+  <rect x="20" y="31" width="38" height="50" rx="5" fill="#FAFCFD"/>
+  <rect x="70" y="47" width="38" height="50" rx="5" fill="#C4E1F0"/>
+  <path d="M29 89H49M39 81V89M79 105H99M89 97V105" fill="none" stroke="#FAFCFD" stroke-width="5" stroke-linecap="round"/>
+  <path d="M46 56H58L70 72H82" fill="none" stroke="#15354A" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M46 56H58L70 72H82" fill="none" stroke="#68B5DC" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

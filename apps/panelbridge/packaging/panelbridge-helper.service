@@ -1,0 +1,29 @@
+[Unit]
+Description=PanelBridge scoped network helper
+Requires=NetworkManager.service
+After=NetworkManager.service dbus.service
+
+[Service]
+Type=dbus
+BusName=org.panelbridge.Helper1
+ExecStart=/usr/bin/python3 -I -B /usr/lib/panelbridge/helper-launch.py
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+ReadWritePaths=/var/lib/panelbridge
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target

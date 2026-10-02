@@ -96,12 +96,15 @@ def _screen_info(args: argparse.Namespace) -> ScreenInfo:
     orientation = 1 if args.orientation == "landscape" else 0
     source_short = min(args.source_width, args.source_height)
     source_long = max(args.source_width, args.source_height)
+    source_width, source_height = (
+        (source_long, source_short) if orientation else (source_short, source_long)
+    )
     return ScreenInfo(
         orientation=orientation,
         encoder_width=args.width,
         encoder_height=args.height,
-        source_short_side=source_short,
-        source_long_side=source_long,
+        source_short_side=source_width,
+        source_long_side=source_height,
     )
 
 

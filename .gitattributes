@@ -15,3 +15,6 @@
 *.png binary
 *.webp binary
 *.zip binary
+
+# Unified diff context retains a single-space blank line.
+apps/panelbridge/native/wfd/*.patch whitespace=-blank-at-eol

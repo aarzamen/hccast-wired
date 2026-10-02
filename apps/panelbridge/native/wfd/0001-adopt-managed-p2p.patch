@@ -1,0 +1,256 @@
+--- a/src/nd-wfd-p2p-sink.c
++++ b/src/nd-wfd-p2p-sink.c
+@@ -36,6 +36,8 @@
+   NMDevice           *nm_device;
+   NMWifiP2PPeer      *nm_peer;
+   NMActiveConnection *nm_ac;
++  gboolean            externally_managed_connection;
++  gchar              *expected_peer_ipv4;
+ 
+   gchar              *uuid;
+ 
+@@ -248,6 +250,7 @@
+   g_clear_object (&sink->nm_client);
+   g_clear_object (&sink->nm_device);
+   g_clear_object (&sink->nm_peer);
++  g_clear_pointer (&sink->expected_peer_ipv4, g_free);
+ 
+   g_clear_object (&sink->missing_video_codec);
+   g_clear_object (&sink->missing_audio_codec);
+@@ -363,6 +366,18 @@
+ static void
+ client_connected_cb (NdWFDP2PSink *sink, WfdClient *client, WfdServer *server)
+ {
++  if (sink->externally_managed_connection)
++    {
++      GstRTSPConnection *connection = gst_rtsp_client_get_connection (GST_RTSP_CLIENT (client));
++      const gchar *remote = connection ? gst_rtsp_connection_get_ip (connection) : NULL;
++      if (g_strcmp0 (remote, sink->expected_peer_ipv4) != 0)
++        {
++          g_warning ("PanelBridge: Rejecting RTSP client outside the selected receiver lease");
++          gst_rtsp_client_close (GST_RTSP_CLIENT (client));
++          return;
++        }
++    }
++
+   g_debug ("NdWfdP2PSink: Got client connection");
+ 
+   g_signal_handlers_disconnect_by_func (sink->server, client_connected_cb, sink);
+@@ -405,94 +420,123 @@
+ }
+ 
+ static void
+-p2p_connected (GObject      *source_object,
+-               GAsyncResult *res,
+-               gpointer      user_data)
++start_rtsp (NdWFDP2PSink *sink)
++{
++  GStrv missing_video = NULL, missing_audio = NULL;
++  gboolean have_wfd_codecs;
++
++  g_assert (sink->server == NULL);
++  sink->server = wfd_server_new ();
++
++  have_wfd_codecs = wfd_server_lookup_encoders (sink->server,
++                                                &missing_video,
++                                                &missing_audio);
++
++  g_clear_object (&sink->missing_video_codec);
++  g_clear_object (&sink->missing_audio_codec);
++
++  sink->missing_video_codec = gtk_string_list_new ((const char *const *) missing_video);
++  sink->missing_audio_codec = gtk_string_list_new ((const char *const *) missing_audio);
++
++  g_object_notify (G_OBJECT (sink), "missing-video-codec");
++  g_object_notify (G_OBJECT (sink), "missing-audio-codec");
++
++  if (!have_wfd_codecs)
++    {
++      g_warning ("NdWfdP2PSink: Essential codecs are missing!");
++      sink->state = ND_SINK_STATE_ERROR;
++      g_object_notify (G_OBJECT (sink), "state");
++
++      return;
++    }
++
++  /*
++   * XXX: Not yet implemented, but we should only bind on the P2P device
++   * wfd_server_set_interface (GST_RTSP_SERVER (sink->server), nm_device_get_ip_iface (sink->nm_device));
++   */
++  if (sink->externally_managed_connection)
++    {
++      NMIPConfig *ip4 = nm_device_get_ip4_config (sink->nm_device);
++      const GPtrArray *addresses = ip4 ? nm_ip_config_get_addresses (ip4) : NULL;
++      if (!addresses || addresses->len == 0)
++        {
++          sink->state = ND_SINK_STATE_ERROR;
++          g_object_notify (G_OBJECT (sink), "state");
++          return;
++        }
++      NMIPAddress *address = g_ptr_array_index (addresses, 0);
++      gst_rtsp_server_set_address (GST_RTSP_SERVER (sink->server),
++                                   nm_ip_address_get_address (address));
++    }
++  sink->server_source_id = gst_rtsp_server_attach (GST_RTSP_SERVER (sink->server), NULL);
++
++  if (sink->server_source_id == 0)
++    {
++      sink->state = ND_SINK_STATE_ERROR;
++      g_object_notify (G_OBJECT (sink), "state");
++      g_clear_object (&sink->server);
++
++      return;
++    }
++
++  g_signal_connect_object (sink->server,
++                           "client-connected",
++                           (GCallback) client_connected_cb,
++                           sink,
++                           G_CONNECT_SWAPPED);
++
++  g_signal_connect_object (sink->server,
++                           "create-source",
++                           (GCallback) server_create_source_cb,
++                           sink,
++                           G_CONNECT_SWAPPED);
++
++  g_signal_connect_object (sink->server,
++                           "create-audio-source",
++                           (GCallback) server_create_audio_source_cb,
++                           sink,
++                           G_CONNECT_SWAPPED);
++
++  sink->state = ND_SINK_STATE_WAIT_SOCKET;
++  g_object_notify (G_OBJECT (sink), "state");
++}
++
++/* PanelBridge: adopt only a connection already activated by the narrow helper. */
++gboolean
++nd_wfd_p2p_sink_adopt_connection (NdWFDP2PSink *sink, NMActiveConnection *ac, const gchar *peer_ipv4)
++{
++  g_return_val_if_fail (sink->state == ND_SINK_STATE_DISCONNECTED, FALSE);
++  g_return_val_if_fail (NM_IS_ACTIVE_CONNECTION (ac), FALSE);
++  if (nm_device_get_active_connection (sink->nm_device) != ac ||
++      nm_active_connection_get_state (ac) != NM_ACTIVE_CONNECTION_STATE_ACTIVATED)
++    return FALSE;
++
++  sink->expected_peer_ipv4 = g_strdup (peer_ipv4);
++  sink->externally_managed_connection = TRUE;
++  sink->nm_ac = g_object_ref (ac);
++  start_rtsp (sink);
++  return sink->state == ND_SINK_STATE_WAIT_SOCKET;
++}
++
++static void
++p2p_connected (GObject *source_object, GAsyncResult *res, gpointer user_data)
+ {
+   g_autoptr(GError) error = NULL;
+   NdWFDP2PSink *sink = ND_WFD_P2P_SINK (user_data);
+-  NMActiveConnection *ac = NULL;
+-  GStrv missing_video = NULL, missing_audio = NULL;
+-  gboolean have_wfd_codecs;
+-
+-  g_debug ("NdWfdP2PSink: Got P2P connection");
+-
+-  ac = nm_client_add_and_activate_connection2_finish (NM_CLIENT (source_object), res, NULL, &error);
++  NMActiveConnection *ac = nm_client_add_and_activate_connection2_finish (
++      NM_CLIENT (source_object), res, NULL, &error);
+   if (!ac)
+     {
+-      /* Operation was aborted */
+       if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+         return;
+-
+       g_warning ("Error activating connection: %s", error->message);
+       nd_wfd_p2p_sink_sink_stop_stream_int (sink);
+       sink->state = ND_SINK_STATE_ERROR;
+       g_object_notify (G_OBJECT (sink), "state");
+       return;
+     }
+-
+   sink->nm_ac = ac;
+-
+-  g_assert (sink->server == NULL);
+-  sink->server = wfd_server_new ();
+-
+-  have_wfd_codecs = wfd_server_lookup_encoders (sink->server,
+-                                                &missing_video,
+-                                                &missing_audio);
+-
+-  g_clear_object (&sink->missing_video_codec);
+-  g_clear_object (&sink->missing_audio_codec);
+-
+-  sink->missing_video_codec = gtk_string_list_new ((const char *const *) missing_video);
+-  sink->missing_audio_codec = gtk_string_list_new ((const char *const *) missing_audio);
+-
+-  g_object_notify (G_OBJECT (sink), "missing-video-codec");
+-  g_object_notify (G_OBJECT (sink), "missing-audio-codec");
+-
+-  if (!have_wfd_codecs)
+-    {
+-      g_warning ("NdWfdP2PSink: Essential codecs are missing!");
+-      sink->state = ND_SINK_STATE_ERROR;
+-      g_object_notify (G_OBJECT (sink), "state");
+-
+-      return;
+-    }
+-
+-  /*
+-   * XXX: Not yet implemented, but we should only bind on the P2P device
+-   * wfd_server_set_interface (GST_RTSP_SERVER (sink->server), nm_device_get_ip_iface (sink->nm_device));
+-   */
+-  sink->server_source_id = gst_rtsp_server_attach (GST_RTSP_SERVER (sink->server), NULL);
+-
+-  if (sink->server_source_id == 0)
+-    {
+-      sink->state = ND_SINK_STATE_ERROR;
+-      g_object_notify (G_OBJECT (sink), "state");
+-      g_clear_object (&sink->server);
+-
+-      return;
+-    }
+-
+-  g_signal_connect_object (sink->server,
+-                           "client-connected",
+-                           (GCallback) client_connected_cb,
+-                           sink,
+-                           G_CONNECT_SWAPPED);
+-
+-  g_signal_connect_object (sink->server,
+-                           "create-source",
+-                           (GCallback) server_create_source_cb,
+-                           sink,
+-                           G_CONNECT_SWAPPED);
+-
+-  g_signal_connect_object (sink->server,
+-                           "create-audio-source",
+-                           (GCallback) server_create_audio_source_cb,
+-                           sink,
+-                           G_CONNECT_SWAPPED);
+-
+-  sink->state = ND_SINK_STATE_WAIT_SOCKET;
+-  g_object_notify (G_OBJECT (sink), "state");
++  start_rtsp (sink);
+ }
+ 
+ static void
+@@ -639,7 +683,8 @@
+    * nm_ac will be unset if something else destroyed the connection already */
+   if (self->nm_ac)
+     {
+-      nm_device_disconnect_async (self->nm_device, NULL, NULL, NULL);
++      if (!self->externally_managed_connection)
++        nm_device_disconnect_async (self->nm_device, NULL, NULL, NULL);
+       g_clear_object (&self->nm_ac);
+     }
+ }
+--- a/src/nd-wfd-p2p-sink.h
++++ b/src/nd-wfd-p2p-sink.h
+@@ -35,4 +35,7 @@
+ NMWifiP2PPeer *nd_wfd_p2p_sink_get_peer (NdWFDP2PSink * sink);
+ NdWFDP2PSink  *nd_wfd_p2p_sink_from_uri (gchar *uri);
+ 
++/* Connection ownership remains with the caller; stop never disconnects it. */
++gboolean nd_wfd_p2p_sink_adopt_connection (NdWFDP2PSink *sink, NMActiveConnection *ac, const gchar *peer_ipv4);
++
+ G_END_DECLS

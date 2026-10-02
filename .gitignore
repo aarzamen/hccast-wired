@@ -15,6 +15,7 @@ htmlcov/
 
 # Private planning, evidence, and run products
 .superpowers/
+.release/
 docs/superpowers/
 logs/
 evidence/

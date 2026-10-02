@@ -1,0 +1,3 @@
+#!/bin/sh
+# Started by the normal graphical session. No elevation or shell input.
+exec /usr/bin/python3 -I -B /usr/lib/panelbridge/session-launch.py

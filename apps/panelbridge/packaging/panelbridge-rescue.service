@@ -1,0 +1,29 @@
+[Unit]
+Description=PanelBridge independent recovery display
+Requires=panelbridge-helper.service
+After=panelbridge-helper.service
+
+[Service]
+Type=exec
+User=panelbridge-rescue
+Group=panelbridge-rescue
+SupplementaryGroups=video
+ExecStart=/usr/bin/python3 -I -B /usr/lib/panelbridge/rescue-launch.py
+Restart=no
+RuntimeMaxSec=900
+TimeoutStopSec=240
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+DevicePolicy=closed
+DeviceAllow=/dev/vcio_gencmd rw

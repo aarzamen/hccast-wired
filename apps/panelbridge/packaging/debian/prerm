@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+case "${1-}" in
+    remove)
+        # Refuse package removal while restoration or a session transition is
+        # pending. The restoration code must remain installed for the retry.
+        exec /usr/bin/python3 -I -B /usr/lib/panelbridge/maintain-launch.py prepare-remove
+        ;;
+    upgrade|deconfigure)
+        echo 'PanelBridge development builds require a completed uninstall before replacement.' >&2
+        exit 1
+        ;;
+    failed-upgrade) exit 1 ;;
+    *) exit 1 ;;
+esac

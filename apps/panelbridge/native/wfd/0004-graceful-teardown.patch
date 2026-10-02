@@ -1,0 +1,29 @@
+--- a/src/nd-wfd-p2p-sink.c
++++ b/src/nd-wfd-p2p-sink.c
+@@ -648,6 +648,17 @@
+   return g_object_ref (sink);
+ }
+ 
++/* Ask the receiver to leave PLAY before the helper removes the P2P group.
++ * The caller owns the finite wait and subsequent unconditional cleanup. */
++gboolean
++nd_wfd_p2p_sink_request_teardown (NdWFDP2PSink *self)
++{
++  if (self->state != ND_SINK_STATE_STREAMING || !self->wfd_client)
++    return FALSE;
++  wfd_client_trigger_method (self->wfd_client, "TEARDOWN");
++  return TRUE;
++}
++
+ static void
+ nd_wfd_p2p_sink_sink_stop_stream_int (NdWFDP2PSink *self)
+ {
+--- a/src/nd-wfd-p2p-sink.h
++++ b/src/nd-wfd-p2p-sink.h
+@@ -38,4 +38,6 @@
+ /* Connection ownership remains with the caller; stop never disconnects it. */
+ gboolean nd_wfd_p2p_sink_adopt_connection (NdWFDP2PSink *sink, NMActiveConnection *ac, const gchar *peer_ipv4);
+ 
++gboolean nd_wfd_p2p_sink_request_teardown (NdWFDP2PSink *sink);
++
+ G_END_DECLS

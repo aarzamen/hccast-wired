@@ -1,65 +1,86 @@
-# HCCAST Wired agent contract
+# AGENTS.md — PanelBridge and HCCAST
 
-This repository is an experimental technical alpha for owned-hardware
-interoperability. It is not clinical software and does not grant authority to
-operate connected hardware.
+This repository contains experimental owned-hardware display software. It is a
+hobbyist interoperability project and is not clinical software. Publishing source
+does not mean the standalone display product has passed its acceptance gates.
 
-## Authority and workflow
+## 1. Authority and workflow
 
-Read `README.md`, `docs/ARCHITECTURE.md`, `docs/VALIDATION.md`, the relevant
-tests, and the assigned task before editing. `AGENTS.md` is the binding policy;
-`MODEL_CONTEXT.md` is orientation only. Change only files explicitly assigned to
-the task, work test-first, and report the exact verification commands and output.
+Read this contract, [MODEL_CONTEXT.md](MODEL_CONTEXT.md), the relevant source,
+tests and evidence summary before changing behavior. A human's current assignment
+defines the authorized scope. Hardware access, package installation, SSH, sudo,
+reboots and network changes require an explicit task manifest identifying the
+host, device, operations and restoration path. Once approved, that manifest covers
+ordinary retries, fixes and tests throughout the assigned work; do not repeatedly
+request the same permission. Private development approvals and host bindings are
+not included in this public checkout and cannot be inferred from its existence.
 
-Use isolated `uv` environments. Preserve Python 3.10 for the known-good Jetson
-runtime; prefer Python 3.12 or 3.13 for development. Never install into system
-Python or provide bare package-installer guidance.
+Use isolated uv environments with Python 3.12 or 3.13 for development. Preserve
+the known-good legacy runtime. Run meaningful tests for changed behavior and
+report the actual commands, outcomes and missing evidence. Do not add simulated
+results to a physical acceptance record.
 
-The reviewed explicit allowlist is the publication boundary. `.gitignore` is
-convenience and defense in depth, not the publication boundary. Keep raw logs,
-media, private evidence, credentials, local paths, and internal planning private.
+The intended PanelBridge outcome is a Raspberry Pi main screen from startup
+through daily desktop use and shutdown without a second monitor. Prioritize
+installation, startup, reconnect, recovery and restoration acceptance. Measure
+useful frame rate, frame loss, latency, CPU load, temperature and power before
+selecting performance changes. Source rate, encoded rate and receiver refresh are
+different measurements. Optional OLED rollout is deferred.
 
-## Claim labels
+## 2. Evidence and platform boundaries
 
-Use one of these labels for technical claims:
+### Claim labels
 
-- `OBSERVED` — directly recorded from a device, descriptor, APK, packaging, or run.
-- `INFERRED` — a plausible explanation that is not directly proved.
-- `IMPLEMENTED` — present in source.
-- `UNIT-TESTED` — exercised without physical hardware.
-- `HARDWARE-VERIFIED` — exercised on the named physical unit/platform with evidence.
-- `REPRODUCED` — independently repeated on another physical unit or platform.
+- **OBSERVED** — directly inspected source, descriptor, command output or user report.
+- **INFERRED** — reasoned conclusion with its assumptions identified.
+- **IMPLEMENTED** — code exists; execution and correctness are not implied.
+- **UNIT-TESTED** — named deterministic checks passed for the specified source.
+- **HARDWARE-VERIFIED** — ran on the named physical host/device pairing; visible output requires panel observation or physical capture.
+- **REPRODUCED** — independently repeated on another host or unit; state what changed.
 
-No current claim is `REPRODUCED`. A test-pattern preview is media evidence, not
-protocol proof. Unsupported-platform work stays explicitly experimental.
+Apply labels to individual claims. Qshot host USB, RK-X40F gadget USB, EBPSI
+Miracast and TTQ DisplayPort are separate paths. Results do not transfer between
+them. EBPSI USB video is unavailable; active USB investigation is deferred. The
+current PanelBridge approach uses the normal labwc desktop and Wi-Fi Direct.
+VNC/noVNC is excluded from its display path. Physical startup and recovery gates
+remain open even when bounded playback and software checks pass.
 
-## Default-deny actions
+## 3. Hardware ownership and recovery
 
-Agents have no authority to perform the following actions by default:
+One integrator owns all hardware, SSH, network discovery and system configuration.
+At most two workers run concurrently with distinct file ownership and no recursive
+delegation. Shared schemas and integration belong to the integrator.
 
-- Use any network or remote service.
-- Initialize Git or create a GitHub or other remote repository.
-- Push commits, create releases, or publish any source or artifact.
-- Contact vendor services, operate a vendor cloud, or download opaque binaries.
-- Update firmware or perform firmware operations.
-- Run SSH, USB, ConfigFS, FunctionFS, systemd, `sudo`, privileged hardware actions, or destructive cleanup.
-- Install packages or synchronize an environment.
+Before authorized physical work, verify host/device identity, current connections,
+saved baseline and independent recovery. Keep Ethernet for recovery when Wi-Fi is
+used for the panel. Use finite deadlines, preserve failed runs and restore only
+recorded app changes. Three stagnant attempts require diagnosis. Never operate
+unrelated buses or storage, detach unreviewed drivers or guess vendor commands.
 
-A physically present human must explicitly authorize the exact action for the current
-task before any item above is allowed. That authorization is narrow, temporary, and
-never standing authority.
+Overclock trials require supported setting semantics, adequate supply/cooling,
+stock measurements and tested rollback. Frequency-only Pi 5 trials are capped at
+2.7 GHz in steps no larger than 50 MHz. Back off at 70 degrees C; abort at 75,
+new undervoltage/throttling, data errors or lost health signal. No voltage override,
+force_turbo, thermal-limit increase or OTP write is allowed. Tryboot does not prove
+recovery from every early boot failure.
 
-## Authorized hardware checkpoints
+## 4. Always request fresh approval
 
-For any later authorized gadget experiment, perform fresh UDC discovery rather than
-reusing a value from a log, record the isolation state, and preserve/verify
-restoration of NVIDIA's stock `l4t` gadget after custom gadget work. Do not infer
-protocol success from a rendered test pattern. Completing one authorized checkpoint
-does not authorize later hardware work.
+- Writing device firmware/flash, entering update modes or cross-flashing.
+- Bootloader EEPROM changes and irreversible OTP/warranty-bit operations.
+- Publishing source/artifacts/releases, changing visibility, force-pushing or rewriting Git history beyond the current explicit publication assignment.
+- Reading/exporting/modifying credentials or adding accounts, keys or access grants; approved existing authentication may be used without exposing secrets.
+- Deleting unrelated files, destructive formatting/reimaging or work outside the approved host/device/operation manifest.
 
-## Review discipline
+## 5. Privacy, licenses and completion
 
-Do not strengthen a claim from source, a unit test, or a historical run. Keep
-protocol assumptions reviewable, test a change before implementation, and run the
-full relevant software suite after it. Hardware-dependent work remains blocked
-until a human supplies a specific, physical checkpoint authorization.
+Keep raw logs, media, host bindings, serial numbers, MAC addresses, credentials,
+personal paths and internal planning private. Use an explicit publication file
+allowlist and review it; ignore rules alone are insufficient. Preserve existing
+MIT notices. PanelBridge has a separate GPL-3.0-or-later license and retains its
+upstream notices and matching source. Do not invent contributor/model attribution.
+
+Completion requires evidence for fresh installation, desktop output without HDMI,
+reboot/reconnect/power cycle, persistent setting changes, bad-setting recovery and
+clean uninstall. A missing gate stays missing. Lead status with the actual state;
+software snapshots and source publication do not complete the product.

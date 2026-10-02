@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import struct
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -805,3 +806,39 @@ def test_default_not_found_error_does_not_call_observed_id_hccast(
     assert "TI MSC-assigned identity" in message
     assert "protocol unverified until SETV" in message
     assert "HCCAST USB-device personality" not in message
+
+
+@pytest.mark.parametrize("command", ["host-stream", "gadget-stream"])
+@pytest.mark.parametrize(
+    "orientation,source,encoder,expected_source",
+    [
+        ("landscape", (1280, 720), (1280, 720), (1280, 720)),
+        ("landscape", (720, 1280), (1280, 720), (1280, 720)),
+        ("portrait", (1280, 720), (720, 1280), (720, 1280)),
+        ("portrait", (720, 1280), (720, 1280), (720, 1280)),
+        ("landscape", (1920, 1080), (1280, 720), (1920, 1080)),
+        ("portrait", (2560, 1600), (720, 1280), (1600, 2560)),
+    ],
+)
+def test_stream_cli_screen_info_uses_oriented_source_dimensions(
+    command: str,
+    orientation: str,
+    source: tuple[int, int],
+    encoder: tuple[int, int],
+    expected_source: tuple[int, int],
+) -> None:
+    args = cli.build_parser().parse_args([
+        command, "fixture.h264", "--orientation", orientation,
+        "--width", str(encoder[0]), "--height", str(encoder[1]),
+        "--source-width", str(source[0]), "--source-height", str(source[1]),
+    ])
+    assert cli._screen_info(args).to_payload() == struct.pack(
+        ">5I", int(orientation == "landscape"), *encoder, *expected_source
+    )
+
+
+def test_default_stream_cli_screen_info_matches_verified_qshot_geometry() -> None:
+    args = cli.build_parser().parse_args(["host-stream", "fixture.h264"])
+    assert cli._screen_info(args).to_payload() == struct.pack(
+        ">5I", 1, 1280, 720, 1280, 720
+    )

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=PanelBridge desktop session
+Exec=/usr/lib/panelbridge/session-launch
+Terminal=false
+NoDisplay=true
+OnlyShowIn=labwc;LXDE;rpd-wayland;
+X-GNOME-Autostart-enabled=true

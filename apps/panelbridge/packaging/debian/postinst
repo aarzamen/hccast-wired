@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+# Installing files does not enroll a guessed user or start a display session.
+# The one-elevation installer runs the installed maintenance entry explicitly.
+case "${1-}" in
+    configure|abort-upgrade|abort-remove|abort-deconfigure) exit 0 ;;
+    *) exit 1 ;;
+esac

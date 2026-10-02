@@ -1,0 +1,152 @@
+--- a/src/wfd/wfd-client.c
++++ b/src/wfd/wfd-client.c
+@@ -5,6 +5,7 @@
+ #include "wfd-media-factory.h"
+ #include "wfd-media.h"
+ #include "wfd-params.h"
++#include "pb-wfd-bridge.h"
+ 
+ typedef enum {
+   INIT_STATE_M0_INVALID = 0,
+@@ -112,11 +113,17 @@
+   return a_weight - b_weight;
+ }
+ 
+-void
++gboolean
+ wfd_client_select_codec_and_resolution (WfdClient *self, WfdH264ProfileFlags profile)
+ {
+   gint i;
+   WfdVideoCodec *codec = NULL;
++  if (pb_wfd_has_wire_request ())
++    {
++      if (!pb_wfd_select_requested_mode (self->params, profile))
++        return FALSE;
++      goto resolution_selected;
++    }
+ 
+   for (i = 0; i < self->params->video_codecs->len; i++)
+     {
+@@ -167,6 +174,7 @@
+ }
+ }
+ #endif
++resolution_selected:
+   g_debug ("selected resolution %i, %i @%i", self->params->selected_resolution->width, self->params->selected_resolution->height, self->params->selected_resolution->refresh_rate);
+ 
+   /* We currently only support AAC with two channels  */
+@@ -182,6 +190,7 @@
+           self->params->selected_audio_codec->modes = G_GUINT64_CONSTANT (0x00000001);
+         }
+     }
++  return pb_wfd_validate_selected_bitrate (self->params);
+ }
+ 
+ gboolean
+@@ -320,7 +329,11 @@
+       wfd_params_from_sink (self->params, ctx->response->body, ctx->response->body_size);
+ 
+       /* XXX: Pick the better profile if we have an encoder that supports it! */
+-      wfd_client_select_codec_and_resolution (self, WFD_H264_PROFILE_BASE);
++      if (!wfd_client_select_codec_and_resolution (self, WFD_H264_PROFILE_BASE))
++        {
++          gst_rtsp_client_close (client);
++          return;
++        }
+ 
+       g_idle_add (wfd_client_idle_set_params, g_object_ref (self));
+       break;
+--- a/src/wfd/wfd-media-factory.c
++++ b/src/wfd/wfd-media-factory.c
+@@ -1,6 +1,7 @@
+ #include "gnome-network-displays-config.h"
+ #include "wfd-media-factory.h"
+ #include "wfd-media.h"
++#include "pb-wfd-bridge.h"
+ 
+ static const gchar * wfd_gst_elements[ELEMENT_NONE + 1] = {
+   [ELEMENT_OPENH264] = "openh264enc",
+@@ -531,6 +532,8 @@
+    * saturate the wifi link.
+    * This is a rather bad method, but it kind of works. */
+   bitrate_kbit = MIN (bitrate_kbit, 512 * 8);
++  if (pb_wfd_requested_bitrate ())
++    bitrate_kbit = pb_wfd_requested_bitrate ();
+ 
+   if (resolution->interlaced)
+     g_warning ("Resolution should never be set to interlaced as that is not supported with all codecs.");
+@@ -627,6 +630,8 @@
+                     "insert-vui", TRUE,
+                     "sliced-threads", FALSE,
+                     NULL);
++      if (pb_wfd_requested_bitrate ())
++        gst_util_set_object_arg (G_OBJECT (encoder), "pass", "cbr");
+       break;
+ 
+     case ELEMENT_VAH264:
+@@ -672,6 +677,8 @@
+                 "caps", caps,
+                 NULL);
+   g_clear_pointer (&caps, gst_caps_unref);
++
++  pb_wfd_report_encoder (encoder, params);
+ 
+   g_debug ("An audiocodec has been selected: %s", params->selected_audio_codec ? "yes" : "no");
+   audio_pipeline = gst_bin_get_by_name (bin, "wfd-audio");
+--- a/src/wfd/wfd-params.h
++++ b/src/wfd/wfd-params.h
+@@ -27,6 +27,7 @@
+   WfdResolution *selected_resolution;
+   WfdAudioCodec *selected_audio_codec;
+ 
++  gboolean       video_formats_received;
+   GPtrArray     *video_codecs;
+   GPtrArray     *audio_codecs;
+ };
+--- a/src/wfd/wfd-params.c
++++ b/src/wfd/wfd-params.c
+@@ -87,6 +87,7 @@
+   copy->primary_rtp_port = self->primary_rtp_port;
+   copy->secondary_rtp_port = self->secondary_rtp_port;
+   copy->rtcp_port_invalid = self->rtcp_port_invalid;
++  copy->video_formats_received = self->video_formats_received;
+   if (self->edid)
+     {
+       copy->edid = g_byte_array_new ();
+@@ -172,6 +173,8 @@
+   gchar **line;
+   g_autofree gchar *body_str = NULL;
+ 
++  self->video_formats_received = FALSE;
++
+   /* Empty body is probably testing, just keep the current values. */
+   if (body == NULL)
+     return;
+@@ -254,6 +257,8 @@
+           char **codec_descriptor;
+           guint16 native;
+ 
++          self->video_formats_received = TRUE;
++
+           /* Clear video codecs to fill them up again. */
+           g_clear_pointer (&self->selected_codec, wfd_video_codec_unref);
+           g_clear_pointer (&self->selected_resolution, wfd_resolution_free);
+--- a/src/wfd/meson.build
++++ b/src/wfd/meson.build
+@@ -1,6 +1,8 @@
+ 
+ wfd_server_sources = [
+   'wfd-client.c',
++  'pb-wfd-profile.c',
++  'pb-wfd-bridge.c',
+   'wfd-media.c',
+   'wfd-media-factory.c',
+   'wfd-params.c',
+@@ -19,6 +21,7 @@
+ #)
+ 
+ wfd_server_deps = [
++  dependency('json-glib-1.0'),
+   dependency('gstreamer-video-1.0', version: '>= 1.14'),
+   dependency('gstreamer-rtsp-1.0', version: '>= 1.14'),
+   dependency('gstreamer-rtsp-server-1.0', version: '>= 1.14'),

@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+# Keep private recovery receipts and user preferences. Never erase directories
+# or dependency packages. Filesystem/package failures remain visible to dpkg.
+case "${1-}" in
+    remove|purge)
+        if [ -d /run/systemd/system ]; then
+            /usr/bin/systemctl daemon-reload
+            /usr/bin/systemctl reload dbus.service
+        fi
+        ;;
+    abort-install|abort-upgrade|failed-upgrade|disappear|upgrade) ;;
+    *) exit 1 ;;
+esac

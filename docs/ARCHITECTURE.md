@@ -63,7 +63,7 @@ monitor             = USB peripheral
 ```
 
 The APK-derived device filters are `05ac:12ad` and `abcd:0002`. The tested
-physical unit instead transiently exposed `1cbe:0005` when a USB-A topology
+RK-X40F-family unit instead transiently exposed `1cbe:0005` when a USB-A topology
 forced the Mac into Host role.
 
 The observed interface had:
@@ -79,6 +79,50 @@ macOS briefly claimed that interface, but it detached even while claimed. One
 bounded `SETR` produced no response bytes and no valid `SETV`. This backend is
 implemented and useful for compatible monitor variants, but it is not the
 hardware-verified video path for this unit.
+
+### Qshot V2 direct-host variant
+
+`OBSERVED`, recorded on 2026-09-27: a separately powered Qshot V2 non-Pro exposed
+`05ac:12ad` with interface `ff/2a/ff`. macOS refused its interface user client
+because `com.apple.coremedia.valeria.allow` was absent. The bounded attempt
+ended before sending `SETR`, so this checkpoint did not test the HCCAST protocol.
+
+`OBSERVED`, recorded from offline Qshot V2 Pro firmware inspection: matching USB
+descriptor templates and HCCast iPhone/Android mirroring components are present.
+`INFERRED`: the variants may share platform components. This does not establish
+non-Pro firmware compatibility or a supported host video path. The original
+temporary evidence was unavailable at closeout; see [VALIDATION.md](VALIDATION.md).
+
+`HARDWARE-VERIFIED`, 2026-09-29: the user's non-Pro Qshot subsequently responded
+to the Jetson acting as USB-A host. Its configured `05ac:12ad` interface `ff/2a/ff`
+uses bulk OUT `0x01` and IN `0x81`, both with 512-byte maximum packets. One SETR
+received a complete 332-byte SETV frame, product `HC15B100`, version `2511261024`.
+A separately authorized checkpoint then sent one landscape SINF (1280x720) and
+one 472,616-byte H.264 access unit as a 472,632-byte VID message. The user's
+photograph shows the selected game scene on the physical Qshot. The runner closed
+the interface and exited 0. Direct-host static-image rendering is therefore
+`HARDWARE-VERIFIED` on this pairing. The first 50-frame predictive-video test
+completed its USB writes but was reported static. A subsequent five-second
+monochrome test sent 25 independent IDR frames at 5 fps; the user confirmed the
+counter and moving square. That bounded motion path is `HARDWARE-VERIFIED`.
+A follow-up changed only the SINF source pair from `(720, 1280)` to
+`(1280, 720)`; the user confirmed a square block and unstretched numbers. The
+working landscape SINF is `(1, 1280, 720, 1280, 720)` for this source and encoder.
+The CLI now orients the source pair accordingly. A subsequent five-second run
+sent 50 independent IDR frames at 10 fps; the user confirmed smooth motion
+through completion. That bounded playback is also `HARDWARE-VERIFIED`.
+A later 300-frame run at the same rate completed smoothly for 30 seconds,
+confirmed by the user and a clean transfer log. A controlled five-second run
+at 10 fps then sent five IDR frames plus 45 P frames with the same pattern and
+corrected SINF; the user confirmed smooth playback. That predictive-frame
+configuration is `HARDWARE-VERIFIED` for five seconds. A later five-second
+predictive test sent 150 frames at 30 fps with a clean close; the user reported
+smooth playback. That configuration is also `HARDWARE-VERIFIED`. Display cadence
+was not instrumented. A later live Xvfb/Openbox desktop with Chromium video,
+encoded by software x264, sent 1,800 frames over 61.676 seconds through this
+USB-A path. The user confirmed playback was fine before its timed stop. That
+bounded live path is `HARDWARE-VERIFIED`, with a 30 fps target and 29.18 fps
+average transmission. Longer runs and rates above 30 fps remain untested.
 
 ## USB backend B: negotiated Android Open Accessory gadget
 
@@ -194,9 +238,19 @@ avoid sharing the gadget data port with primary power.
 
 ### Raspberry Pi 4/5
 
-Active reproduction target. The target image, USB controller, device tree, port,
-and separate power arrangement must expose a usable UDC. Protocol parity should
-precede live-desktop adaptation.
+Pi 5 Qshot host-USB playback is `HARDWARE-VERIFIED` for a five-second, 150-frame
+1280x720 fixture at a 30 fps sending rate, with user-confirmed correct motion
+and proportions (2026-10-01). This reproduces the Jetson Qshot path. A subsequent isolated
+Chromium/Xvfb desktop and public sample video also ran correctly for 60 seconds
+at a 30 fps target, confirmed by the user. Encoding uses software x264; the
+existing Wayland/Waveshare desktop configuration was preserved. A later
+five-minute session added Mac mouse/keyboard control through loopback-only
+x11vnc/noVNC and an SSH tunnel. The user confirmed correct control and Qshot
+output through completion; both sides closed afterward.
+
+Pi 4/5 RK-X40F gadget reproduction remains a separate target requiring a usable
+UDC and the appropriate power/port topology; those requirements do not apply
+to the verified Qshot host path.
 
 ### macOS
 

@@ -171,6 +171,10 @@ The factory app does this after opening either transport:
 The factory app requires a total packet length of at least 320 bytes and accepts
 optional fields when the total length exceeds 320/324/328.
 
+The [September 29 HCCast 3.3.0 follow-up](FIRMWARE_AND_APP_REVERSE_ENGINEERING.md)
+traces the same URL field to an update JSON client. Firmware bytes are selected
+from the response's `FW_URL`; the field itself is an update-metadata URL.
+
 ## Settings and screen information
 
 `SETS` payload is four BE u32 values:
@@ -188,9 +192,22 @@ full_mode
 orientation              0 portrait, 1 landscape
 encoder_width
 encoder_height
-source_display_short_side
-source_display_long_side
+source_display_width
+source_display_height
 ```
+
+`OBSERVED`, HCCast 3.3.0 code reviewed on 2026-09-29: `DisplayUtil` initially
+normalizes source dimensions, but `MirrorBean.exchangeWidthHeight()` swaps both
+the encoder and source pairs for landscape before `sendDisplayInfo()` serializes
+them. The last two words therefore follow the current orientation. For a
+1280x720 source and encoder, landscape SINF is `(1, 1280, 720, 1280, 720)`.
+The earlier short-side/long-side labels missed that later swap. The Python
+`source_short_side` and `source_long_side` parameter names still reflect that
+earlier interpretation; serialization writes the supplied values directly.
+`HARDWARE-VERIFIED`: the Qshot checkpoint changed only that source pair and
+the user confirmed a square moving block and unstretched digits. The CLI now
+uses the oriented pair; the serialized field names remain compatible with
+existing callers. See the [focused investigation](FIRMWARE_AND_APP_REVERSE_ENGINEERING.md).
 
 ## Video
 
@@ -245,4 +262,6 @@ video and USB role negotiation work on real hardware.
 
 The factory application also contains Wi-Fi configuration, account/diagnostic,
 and device-maintenance components. None is required for the local wired HCCAST
-video transport. This repository neither implements nor contacts those services.
+video transport. The driver does not implement those services. The separately
+authorized [static app/firmware investigation](FIRMWARE_AND_APP_REVERSE_ENGINEERING.md)
+examines update code and public vendor downloads; it does not perform updates.

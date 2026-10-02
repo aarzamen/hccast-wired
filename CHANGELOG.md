@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — PanelBridge development snapshot
+
+- Add the experimental Pi 5 normal-desktop controller, GTK controls, scoped
+  network helper, rescue renderer, packaging and restoration tools.
+- Preserve the modified sender source, pinned upstream archive, calibration
+  accounting and reversible advanced-control source with their software tests.
+- Record bounded EBPSI wireless desktop output and Qshot USB playback on Pi 5.
+  Unattended startup, full recovery, calibration and uninstall acceptance remain
+  unfinished; this source checkpoint is not a completed install release.
+- Retain optional local OLED startup/status controls as deferred integration.
+- Resume toward standalone boot-to-shutdown use and measured frame-rate,
+  efficiency and performance improvements.
+- Keep the legacy HCCAST MIT license and separate PanelBridge GPL-3.0-or-later
+  license, notices and source boundaries.
+
 ## Unreleased — Fable handoff and platform reproduction
 
 - Reconciled the public handoff around the hardware-verified Jetson direct

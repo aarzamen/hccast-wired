@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=PanelBridge
+Comment=Use a wireless selfie display with the Raspberry Pi desktop
+Exec=/usr/bin/panelbridge
+Icon=org.panelbridge.PanelBridge
+Terminal=false
+Categories=Settings;HardwareSettings;
+StartupNotify=true

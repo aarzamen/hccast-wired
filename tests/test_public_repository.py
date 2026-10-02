@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import shlex
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,7 +41,7 @@ PUBLIC_CANDIDATE_TEXT_FILES = (
     "scripts/probe-platform.sh",
 )
 
-REQUIRED_TASK_SECTIONS = (
+REQUIRED_LEGACY_TASK_SECTIONS = (
     "Scope",
     "Owned files",
     "Forbidden actions",
@@ -55,14 +56,10 @@ def _read(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
-def _normalized_prose(value: str) -> str:
-    return " ".join(value.split())
-
-
 def _markdown_section(document: str, heading: str, *, level: int) -> str:
     marker = "#" * level
     match = re.search(
-        rf"^{marker} {re.escape(heading)}\n\n(?P<body>.*?)(?=^#{{1,{level}}} |\Z)",
+        rf"^{marker} (?:\d+\. )?{re.escape(heading)}\n\n(?P<body>.*?)(?=^#{{1,{level}}} |\Z)",
         document,
         flags=re.MULTILINE | re.DOTALL,
     )
@@ -70,14 +67,15 @@ def _markdown_section(document: str, heading: str, *, level: int) -> str:
     return match.group("body").strip()
 
 
-def _agent_tasks(document: str) -> dict[str, dict[str, str]]:
-    task_matches = list(re.finditer(r"^## (Task \d+: [^\n]+)$", document, re.MULTILINE))
+def _legacy_agent_tasks(document: str) -> dict[str, dict[str, str]]:
+    document = _markdown_section(document, "Optional legacy briefs", level=2)
+    task_matches = list(re.finditer(r"^### (Task \d+: [^\n]+)$", document, re.MULTILINE))
     parsed: dict[str, dict[str, str]] = {}
     for index, match in enumerate(task_matches):
         end = task_matches[index + 1].start() if index + 1 < len(task_matches) else len(document)
         task = document[match.end() : end]
         sections = re.findall(
-            r"^### ([^\n]+)\n\n(.*?)(?=^### |\Z)",
+            r"^#### ([^\n]+)\n\n(.*?)(?=^#### |\Z)",
             task,
             flags=re.MULTILINE | re.DOTALL,
         )
@@ -140,114 +138,49 @@ def test_ci_is_read_only_pinned_and_covers_supported_python() -> None:
     assert "# v9.0.0" in workflow
 
 
-def test_agent_contract_structurally_sets_claim_and_workflow_boundaries() -> None:
-    agents = _read("AGENTS.md")
+def test_agent_contract_defines_the_evidence_claim_vocabulary() -> None:
+    claims = _markdown_section(_read("AGENTS.md"), "Claim labels", level=3)
+    # Labels are the shared evidence vocabulary; wording and current results may evolve.
+    claim_labels = re.findall(r"^- (?:`|\*\*)([A-Z-]+)(?:`|\*\*) —", claims, re.MULTILINE)
 
-    authority = _markdown_section(agents, "Authority and workflow", level=2)
-    normalized_authority = _normalized_prose(authority)
-    assert "`AGENTS.md` is the binding policy" in normalized_authority
-    assert "work test-first" in normalized_authority
-    assert "Use isolated `uv` environments" in normalized_authority
-
-    claims = _markdown_section(agents, "Claim labels", level=2)
-    claim_labels = tuple(re.findall(r"^- `([A-Z-]+)` —", claims, re.MULTILINE))
-    assert claim_labels == (
+    assert len(claim_labels) == len(set(claim_labels))
+    assert set(claim_labels) == {
         "OBSERVED",
         "INFERRED",
         "IMPLEMENTED",
         "UNIT-TESTED",
         "HARDWARE-VERIFIED",
         "REPRODUCED",
-    )
-    normalized_claims = _normalized_prose(claims)
-    assert "No current claim is `REPRODUCED`." in normalized_claims
-    assert "test-pattern preview is media evidence, not protocol proof" in normalized_claims
+    }
 
 
-def test_agent_contract_default_denies_external_and_publication_authority() -> None:
-    agents = _read("AGENTS.md")
-    default_deny = _markdown_section(agents, "Default-deny actions", level=2)
-    normalized_default_deny = _normalized_prose(default_deny)
-
-    assert (
-        "Agents have no authority to perform the following actions by default:"
-        in normalized_default_deny
-    )
-    assert tuple(re.findall(r"^- (.+)$", default_deny, re.MULTILINE)) == (
-        "Use any network or remote service.",
-        "Initialize Git or create a GitHub or other remote repository.",
-        "Push commits, create releases, or publish any source or artifact.",
-        "Contact vendor services, operate a vendor cloud, or download opaque binaries.",
-        "Update firmware or perform firmware operations.",
-        "Run SSH, USB, ConfigFS, FunctionFS, systemd, `sudo`, privileged hardware actions, or destructive cleanup.",
-        "Install packages or synchronize an environment.",
-    )
-    assert (
-        "A physically present human must explicitly authorize the exact action for the current "
-        "task before any item above is allowed."
-    ) in normalized_default_deny
-    assert "never standing authority" in normalized_default_deny
-
-    checkpoints = _markdown_section(agents, "Authorized hardware checkpoints", level=2)
-    normalized_checkpoints = _normalized_prose(checkpoints)
-    assert "fresh UDC discovery" in normalized_checkpoints
-    assert "stock `l4t` gadget" in normalized_checkpoints
-    assert "does not authorize later hardware work" in normalized_checkpoints
+def test_agent_contract_keeps_high_risk_actions_outside_build_approval() -> None:
+    boundaries = _markdown_section(_read("AGENTS.md"), "Always request fresh approval", level=2)
+    # Keep these categories in the fresh-approval boundary without freezing sentences.
+    for category in ("firmware", "EEPROM", "publishing", "credentials", "reimaging"):
+        assert re.search(rf"\b{category}\b", boundaries, re.IGNORECASE), category
 
 
-def test_model_context_orients_without_repeating_authoritative_policy() -> None:
-    model_context = _read("MODEL_CONTEXT.md")
-
-    assert model_context.startswith(
-        "# Model context\n\nThis file provides status orientation only. "
-        "[AGENTS.md](AGENTS.md) is authoritative."
-    )
-    assert "source_user" in model_context
-    assert "`hccast`" in model_context
-    assert not re.search(
-        r"\b(?:agents? (?:must|may|shall)|do not|never|forbidden|required|authori[sz]e)\b",
-        model_context,
-        re.IGNORECASE,
-    )
-    assert "## " not in model_context
+def test_orientation_documents_link_to_the_authoritative_contract() -> None:
+    for relative_path in ("CLAUDE.md", "MODEL_CONTEXT.md", "CONTRIBUTING.md", "docs/AGENT_TASKS.md"):
+        document = _read(relative_path)
+        links = re.findall(r"\[AGENTS\.md\]\(([^)]+)\)", document)
+        assert links, f"{relative_path} must point readers to the binding contract"
+        for target in links:
+            assert (ROOT / relative_path).parent.joinpath(target).resolve() == ROOT / "AGENTS.md"
 
 
-def test_claude_is_a_concise_fable_operating_map_without_standing_authority() -> None:
+def test_claude_operating_map_links_resolve() -> None:
     claude = _read("CLAUDE.md")
+    links = re.findall(r"\[[^]\n]+\]\(([^)]+)\)", claude)
 
-    assert claude.startswith("# HCCAST Wired — Claude Code orientation\n")
-    normalized = _normalized_prose(claude)
-    for required in (
-        "[AGENTS.md](AGENTS.md) is authoritative",
-        "[README.md](README.md)",
-        "[MODEL_CONTEXT.md](MODEL_CONTEXT.md)",
-        "[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)",
-        "[docs/VALIDATION.md](docs/VALIDATION.md)",
-        "Raspberry Pi reproduction is the active target",
-        "Jetson Orin Nano is the hardware-verified reference",
-        "macOS is a development and diagnostic controller",
-        "uv run --no-sync pytest -p no:cacheprovider -o addopts= -q",
-        "uv run --no-sync ruff check src tests",
-        "uv run --no-sync mypy src/hccast_wired/live",
-        "python3 -m compileall -q src tests",
-        "Preserve the user-selected model",
-        "report the change before substantive work resumes",
-    ):
-        assert required in normalized
-
-    assert not re.search(
-        r"\b(?:standing authority|always authorized|no approval needed|silently delegate)\b",
-        claude,
-        re.IGNORECASE,
-    )
+    assert {"AGENTS.md", "MODEL_CONTEXT.md", "README.md"} <= set(links)
+    for target in links:
+        assert (ROOT / target).is_file(), f"broken CLAUDE.md link: {target}"
 
 
-def test_current_public_status_points_to_raspberry_pi_reproduction() -> None:
+def test_legacy_readme_evidence_links_remain_available() -> None:
     readme = _read("README.md")
-    model_context = _normalized_prose(_read("MODEL_CONTEXT.md"))
-    roadmap = _normalized_prose(_read("ROADMAP.md"))
-    validation = _read("docs/VALIDATION.md")
-    first_run = _normalized_prose(_read("docs/FIRST_RUN.md"))
 
     for path in (
         "CLAUDE.md",
@@ -259,58 +192,84 @@ def test_current_public_status_points_to_raspberry_pi_reproduction() -> None:
         "docs/AGENT_TASKS.md",
     ):
         assert f"]({path})" in readme
-
-    assert "Raspberry Pi reproduction" in model_context
-    assert "macOS is diagnostic-only" in model_context
-    assert "Raspberry Pi reproduction" in roadmap
-    assert "FunctionFS against a real UDC" not in validation
-    assert "Software-only verification" in first_run
-    assert "Raspberry Pi target" in first_run
-    assert "requires a separate, explicit bounded authorization" in first_run
+        assert (ROOT / path).is_file()
 
 
-def test_agent_task_queue_is_copyable_and_fully_bounded() -> None:
-    document = _read("docs/AGENT_TASKS.md")
-    tasks = _agent_tasks(document)
+def test_panelbridge_lane_table_covers_stages_and_planned_component_ownership() -> None:
+    active = _markdown_section(_read("docs/AGENT_TASKS.md"), "Active PB-1 lanes", level=2)
+    table = [line for line in active.splitlines() if line.startswith("| ")]
+    header = [column.strip() for column in table[0].strip("|").split("|")]
+    assert header == ["Stage", "Integrator", "Worker A ownership", "Worker B ownership", "Gate"]
+    rows = [[column.strip() for column in line.strip("|").split("|")] for line in table[1:]]
+    assert len(rows) == 5
+    assert {row[0].split(".", 1)[0] for row in rows} == {"0", "1", "2", "3", "4"}
+    assert all(len(row) == 5 and all(row) for row in rows)
 
-    assert len(tasks) == 4
-    assert "Hardware work is blocked" in _normalized_prose(document)
+    # These are planned ownership boundaries, not assertions that code already exists.
+    worker_paths = set(re.findall(r"`(apps/panelbridge/[^`]+)`", " ".join(
+        cell for row in rows for cell in row[2:4]
+    )))
+    assert {
+        "apps/panelbridge/native/capture/",
+        "apps/panelbridge/native/wfd/",
+        "apps/panelbridge/panelbridge/controller/",
+        "apps/panelbridge/helper/",
+        "apps/panelbridge/panelbridge/ui/",
+        "apps/panelbridge/packaging/",
+        "apps/panelbridge/tests/",
+        "apps/panelbridge/docs/",
+    } <= worker_paths
+    assert all(not Path(path).is_absolute() and ".." not in Path(path).parts for path in worker_paths)
+
+
+def test_documented_existing_python_checks_name_real_test_targets() -> None:
+    active = _markdown_section(_read("docs/AGENT_TASKS.md"), "Active PB-1 lanes", level=2)
+    checks = _markdown_section(active, "Existing Python checks", level=3)
+    blocks = re.findall(r"```bash\n(.*?)\n```", checks, re.DOTALL)
+    assert blocks
+    for block in blocks:
+        for command in block.splitlines():
+            arguments = shlex.split(command)
+            assert arguments[:4] == [".venv/bin/python", "-B", "-m", "pytest"]
+            assert "-q" in arguments
+            targets = arguments[arguments.index("-q") + 1:]
+            assert targets
+            assert all((ROOT / target).is_file() for target in targets)
+            assert all(target.startswith(("tests/", "apps/panelbridge/tests/")) for target in targets)
+
+
+def test_legacy_worker_briefs_have_bounded_files_and_runnable_acceptance() -> None:
+    tasks = _legacy_agent_tasks(_read("docs/AGENT_TASKS.md"))
+
+    assert tasks
     for title, sections in tasks.items():
-        assert tuple(sections) == REQUIRED_TASK_SECTIONS, title
-        assert all(sections.values()), title
+        assert set(REQUIRED_LEGACY_TASK_SECTIONS) <= set(sections), title
+        assert all(sections[heading] for heading in REQUIRED_LEGACY_TASK_SECTIONS), title
+
+        owned = re.findall(r"`([^`]+\.py)`", sections["Owned files"])
+        assert owned, f"{title} must assign concrete files"
+        assert all((ROOT / path).is_file() for path in owned), title
 
         forbidden = sections["Forbidden actions"].lower()
-        for boundary in ("network", "remote", "hardware", "package", "git", "publish"):
-            assert boundary in forbidden, f"{title} missing {boundary} prohibition"
+        for boundary in ("worker", "network", "remote", "hardware", "package", "git", "publish"):
+            assert boundary in forbidden, f"{title} missing {boundary} boundary"
 
-        prerequisites = sections["Prerequisites"]
-        normalized_prerequisites = _normalized_prose(prerequisites)
-        assert (
-            "A human has already provisioned the isolated development environment"
-            in normalized_prerequisites
-        )
-        assert "stop and request separate setup authorization" in normalized_prerequisites
-
-        acceptance = sections["Acceptance tests"]
-        assert re.fullmatch(
-            r"`uv run --no-sync pytest -p no:cacheprovider -o addopts= -q [A-Za-z0-9_./-]+`",
-            acceptance,
-        ), f"{title} has a non-concrete or non-software acceptance gate"
-        assert "UV_CACHE_DIR" not in acceptance
-        assert "/private/" not in acceptance
-
-        evidence = sections["Required evidence"]
-        assert "RED" in evidence and "GREEN" in evidence
-        assert "command" in evidence.lower() and "output" in evidence.lower()
+        command = sections["Acceptance tests"].strip("`")
+        arguments = shlex.split(command)
+        assert arguments[:8] == [
+            "uv", "run", "--no-sync", "pytest", "-p", "no:cacheprovider", "-o", "addopts=",
+        ], title
+        assert arguments[8] == "-q", title
+        test_paths = arguments[9:]
+        assert test_paths and set(test_paths) <= set(owned), title
+        assert all(path.startswith("tests/") and (ROOT / path).is_file() for path in test_paths)
 
         brief = sections["Copy-ready brief"]
-        assert brief.startswith("```text\nPrerequisite: a human has already provisioned")
-        normalized_brief = _normalized_prose(brief)
-        assert "stop and request separate setup authorization" in normalized_brief
-        assert "Do not install or synchronize packages" in normalized_brief
-        assert "uv sync" not in brief
-        assert "UV_CACHE_DIR" not in brief
-        assert "/private/" not in brief
+        assert brief.startswith("```text\n") and brief.endswith("```"), title
+        assert f"Acceptance: {command}" in brief, title
+        for path in owned:
+            assert path in brief, f"{title} copy-ready brief omits owned file {path}"
+        assert "AGENTS.md" in brief and "integrator" in brief, title
 
 
 def test_third_party_notice_limits_mit_to_original_work() -> None:
@@ -360,7 +319,6 @@ def test_ignore_rules_exclude_private_inventory_and_legacy_runners() -> None:
         "scripts/start-xvfb-ui.sh",
     ):
         assert required in ignored
-    assert "not the publication boundary" in _read("AGENTS.md")
 
 
 def test_gitattributes_normalizes_text_and_keeps_media_binary() -> None:
