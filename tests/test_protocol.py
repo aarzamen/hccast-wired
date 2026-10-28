@@ -58,6 +58,42 @@ def test_stream_parser_resynchronizes() -> None:
     assert parser.discarded_bytes == 4
 
 
+@pytest.mark.parametrize("split", range(1, 348))
+def test_resynchronization_survives_fragmented_startup_preamble(split: int) -> None:
+    # Observed Qshot startup bytes are not a header in this framing format.
+    # A shifted prefix can look like a plausible length after one-byte discard.
+    preamble = bytes.fromhex("10000000676e69700000000001000000")
+    expected = Frame(0, Command.SETV, 1, bytes(316))
+    wire = preamble + expected.to_bytes()
+    parser = FrameStreamParser()
+    frames = parser.feed(wire[:split]) + parser.feed(wire[split:])
+    assert frames == [expected]
+    assert parser.discarded_bytes == len(preamble)
+    assert parser.buffered_bytes == 0
+
+
+def test_resynchronization_survives_bytewise_input() -> None:
+    preamble = bytes.fromhex("10000000676e69700000000001000000")
+    expected = Frame(3, Command.SETV, 1, bytes(316))
+    parser = FrameStreamParser()
+    frames = []
+    for value in preamble + expected.to_bytes():
+        frames.extend(parser.feed(bytes([value])))
+    assert frames == [expected]
+    assert parser.discarded_bytes == len(preamble)
+    assert parser.buffered_bytes == 0
+
+
+def test_unknown_commands_remain_valid_on_aligned_streams() -> None:
+    unknown = Frame(4, Command.UNK, 0, b"future command", raw_command=b"TEST")
+    parser = FrameStreamParser()
+    assert parser.feed(unknown.to_bytes()[:17]) == []
+    assert parser.feed(unknown.to_bytes()[17:]) == [unknown]
+    known = Frame(5, Command.PING, 0, b"")
+    assert parser.feed(b"junk" + known.to_bytes() + unknown.to_bytes()) == [known, unknown]
+    assert parser.discarded_bytes == 4
+
+
 def test_settings_and_screen_info_layout() -> None:
     assert Settings(1, 1, 0, 1).to_payload() == struct.pack(">IIII", 1, 1, 0, 1)
     assert ScreenInfo(1, 1280, 720, 720, 1280).to_payload() == struct.pack(

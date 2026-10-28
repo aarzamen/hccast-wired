@@ -124,6 +124,7 @@ class FrameStreamParser:
             raise ValueError("max_frame must be at least 16")
         self.max_frame = max_frame
         self._buffer = bytearray()
+        self._resynchronizing = False
         self.discarded_bytes = 0
 
     @property
@@ -136,9 +137,13 @@ class FrameStreamParser:
         frames: list[Frame] = []
 
         while len(self._buffer) >= HEADER_SIZE:
+            if self._resynchronizing:
+                if not self._resync():
+                    break
+                self._resynchronizing = False
             total_length = _U32.unpack_from(self._buffer, 0)[0]
             if not self._plausible_length(total_length):
-                self._resync()
+                self._resynchronizing = True
                 continue
             if len(self._buffer) < total_length:
                 break
@@ -162,12 +167,14 @@ class FrameStreamParser:
     def _plausible_length(self, value: int) -> bool:
         return HEADER_SIZE <= value <= self.max_frame
 
-    def _resync(self) -> None:
+    def _resync(self) -> bool:
         # Look for a known command at header offset +8 and a sane length.  Keep the
         # final 15 bytes if no candidate exists because they may be a partial header.
+        # Stay in this search across feeds: a shifted prefix can have a plausible
+        # length without being an aligned frame. Aligned unknown commands remain valid.
         known = {command.value for command in Command if command is not Command.UNK}
         search_limit = max(1, len(self._buffer) - HEADER_SIZE + 1)
-        for offset in range(1, search_limit):
+        for offset in range(search_limit):
             if len(self._buffer) - offset < HEADER_SIZE:
                 break
             length = _U32.unpack_from(self._buffer, offset)[0]
@@ -175,11 +182,12 @@ class FrameStreamParser:
             if self._plausible_length(length) and magic in known:
                 del self._buffer[:offset]
                 self.discarded_bytes += offset
-                return
+                return True
 
         discard = max(1, len(self._buffer) - (HEADER_SIZE - 1))
         del self._buffer[:discard]
         self.discarded_bytes += discard
+        return False
 
 
 @dataclass(frozen=True, slots=True)
