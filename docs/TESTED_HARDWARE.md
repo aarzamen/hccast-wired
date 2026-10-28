@@ -36,6 +36,15 @@ All 302 outgoing message hashes matched the prepared identification, geometry an
 video sequence. This is bounded physical motion, not a normal extended desktop
 or long-term reliability result. No firmware, kernel or boot change was made.
 
+## Pi 500 TTQ TF39 checkpoint, 2026-10-27
+
+Pi-to-TTQ output remains unverified. The user reported a powered but dark
+screen; the supplied adapter photo identifies an HDMI-to-USB capture card,
+not a converter that drives a USB-C DisplayPort monitor. This connection does
+not test TTQ compatibility. Retest requires an active HDMI-source-to-USB-C
+DisplayPort display converter, suitable screen power and a video-capable
+USB-C cable. No TTQ protocol commands or boot-setting changes were made.
+
 ## Verified Jetson topology
 
 ```text
