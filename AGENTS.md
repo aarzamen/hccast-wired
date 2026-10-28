@@ -20,12 +20,13 @@ the known-good legacy runtime. Run meaningful tests for changed behavior and
 report the actual commands, outcomes and missing evidence. Do not add simulated
 results to a physical acceptance record.
 
-The intended PanelBridge outcome is a Raspberry Pi main screen from startup
-through daily desktop use and shutdown without a second monitor. Prioritize
-installation, startup, reconnect, recovery and restoration acceptance. Measure
-useful frame rate, frame loss, latency, CPU load, temperature and power before
-selecting performance changes. Source rate, encoded rate and receiver refresh are
-different measurements. Optional OLED rollout is deferred.
+The current PanelBridge scope is a LUODIER/EBPSI extended desktop on Pi 500,
+with HDMI retained and Ethernet available for recovery; see [scope](docs/SCOPE.md).
+Prioritize repeatable connection, restoration and installation acceptance. The
+older Pi 5 sole-monitor boot-to-shutdown goal remains unfinished future work.
+Measure useful frame rate, loss, latency, CPU, temperature and power before
+selecting performance changes. Source rate, encoded rate and receiver refresh
+are different measurements. Optional OLED rollout is deferred.
 
 ## 2. Evidence and platform boundaries
 
@@ -74,13 +75,18 @@ recovery from every early boot failure.
 
 ## 5. Privacy, licenses and completion
 
-Keep raw logs, media, host bindings, serial numbers, MAC addresses, credentials,
-personal paths and internal planning private. Use an explicit publication file
-allowlist and review it; ignore rules alone are insufficient. Preserve existing
+Keep raw logs, original media metadata, host bindings, serial numbers, MAC
+addresses, credentials, personal paths and internal planning private. Selected
+owner-approved demonstration media may be published after metadata and visual
+privacy review, with accurate device-specific captions. Use an explicit
+publication file allowlist and review it; ignore rules alone are insufficient. Preserve existing
 MIT notices. PanelBridge has a separate GPL-3.0-or-later license and retains its
 upstream notices and matching source. Do not invent contributor/model attribution.
 
-Completion requires evidence for fresh installation, desktop output without HDMI,
-reboot/reconnect/power cycle, persistent setting changes, bad-setting recovery and
-clean uninstall. A missing gate stays missing. Lead status with the actual state;
-software snapshots and source publication do not complete the product.
+Current-scope completion requires visible extended-desktop/video output and
+repeatable start/stop while preserving HDMI and recovery access. Broader release
+acceptance also needs fresh installation, reboot/reconnect/power cycle, setting
+persistence, bad-setting recovery and clean uninstall. Desktop output without
+HDMI belongs to the older standalone goal. A missing gate stays missing. Lead
+status with the actual state; software snapshots and source publication do not
+complete the product.

@@ -2,56 +2,49 @@
 
 This file provides status orientation only. [AGENTS.md](AGENTS.md) is authoritative.
 
-## PanelBridge closeout snapshot — 2026-10-02
+## Current checkpoint — Pi 500, 2026-10-27
 
-**The standalone product is incomplete.** The goal is a Raspberry Pi main screen
-from startup through daily desktop use and shutdown without a second monitor.
-Resume autonomously within the current approved task manifest, minimizing user
-requests and improving frame rate, efficiency and performance through measured
-comparisons. Private host bindings, approvals, plans and raw evidence are excluded
-from this public snapshot. See [PanelBridge status](apps/panelbridge/README.md).
+The selected scope is LUODIER/EBPSI extra desktop space alongside HDMI on a
+Raspberry Pi 500. Ethernet remains the independent SSH/internet connection while
+Wi-Fi Direct carries the display. See [scope](docs/SCOPE.md),
+[Pi 500 results](docs/PI500.md) and [PanelBridge status](apps/panelbridge/README.md).
+Private host bindings, access details, raw evidence and development plans stay
+outside the public checkout. Publication does not authorize new hardware work.
 
-The current approach is wireless-first Pi 5, GTK4, normal labwc desktop and
-Wi-Fi Direct/Miracast with Ethernet for recovery. EBPSI USB video is unavailable;
-active USB protocol work is deferred. Qshot USB evidence describes a different
-transport and cannot establish EBPSI compatibility.
+**HARDWARE-VERIFIED:** the owner confirmed normal desktop and browser video on
+LUODIER/EBPSI while HDMI remained responsive. Silent derivatives of the supplied
+recordings are included in [the media gallery](docs/media/README.md). The tested
+Pi 500 ran Debian 13 ARM64/labwc with experimental PanelBridge `0.1.0~dev4` and a
+1280×720 virtual output to the right of HDMI. Installed payload readback matched.
 
-**HARDWARE-VERIFIED:** one Pi 5/EBPSI pairing displayed the normal desktop with
-user-confirmed motion, proportions and readable controls. A bounded 30 → 15 → 30
-content-fps sequence worked; negotiated video stayed 720p30. An independent moving
-recovery card also worked while the desktop was stopped, followed by restoration.
-Neither result proves unattended recovery, headless-only boot or long-term use.
+**Unresolved:** an initial freeze required a physical restart; its cause is
+unknown. One subsequent stop/start worked, but closeout reported a session
+timeout and did not establish clean final network restoration. Automatic casting
+is disabled. Repeated reconnect, reboot/power-cycle recovery, sustained use,
+audio and clean maintenance remain unqualified. The earlier standalone Pi 5 goal
+is retained as future work, not the current Pi 500 acceptance requirement.
 
-**OBSERVED:** the experimental fresh installer completed with one privilege
-prompt and matching package/configuration readback. The installed version remains
-`0.1.0~dev2` plus a startup-entry repair. A read-only closeout check found the helper
-and normal-desktop sender running, rescue inactive and no named test harness.
-This is process state, not a fresh panel observation. Automatic connection after
-reboot previously failed until manual controller recovery. HDMI was still attached.
+**HARDWARE-VERIFIED, separate wired path:** Qshot V2 non-Pro displayed a 300-frame
+1280×720 sequence over Pi 500 USB host in 29.902 seconds at a 10 fps target, with
+user-confirmed motion and clean closure. Its UVC-labelled socket was driven with
+HCCAST. A preceding five-second 30 fps transfer lacked physical observation.
+The fragmented startup-preamble parser defect found during identification is
+fixed with regression coverage. No persistent Qshot desktop service was installed.
 
-**IMPLEMENTED / UNIT-TESTED:** source adds bounded Ethernet readiness before
-startup, precise network restoration errors, optional OLED controls, native frame
-accounting and reversible advanced-control logic. Custom GstMeta frame carriage
-replaced the disproved OFFSET approach and passed generated Pi pipelines. Full
-calibration/controller integration and qualified presets remain pending. The
-advanced observer exists in source and fixture tests; deployment, trusted safety
-facts and physical clock/recovery qualification remain incomplete. New source is
-not installed. A development native worker must have its private runtime/debug
-paths removed and be checked before binary redistribution.
+**OBSERVED, not supported output:** TTQ TF39 stayed dark through an HDMI capture
+dongle, then did not enumerate when tried in Qshot's USB host cable/adapter path.
+No TTQ protocol commands or resets followed. Its documented DisplayPort input
+requires a different signal path; neither other screen's result proves TTQ support.
 
-On resumption, complete a safe upgrade, unattended boot with only the panel,
-reconnect/power-cycle/mode persistence, timed rollback, automatic rescue and clean
-uninstall. Measure sustained useful frames, loss, latency, CPU load, temperature,
-throttling and input power before selecting performance changes. The user reports
-an official 27 W supply, active fan and available power meter; those reports do not
-qualify a clock trial or preset. Record panel behavior before connection and at
-shutdown. No further storage image write is planned.
+The publication includes reviewed source/docs and selected metadata-stripped
+media. Development binaries remain unqualified for redistribution because of
+private build paths and unfinished installation/recovery acceptance. Optional
+OLED integration and overclock trials remain outside this scope.
 
-The user owns five OLED modules and intends one per Pi/Jetson, each controlling
-its own host. Optional startup/control integration is software-tested; rollout and
-portability are deferred. Preserve that work without making it a completion gate.
-No GPIO or live boot settings changed. Existing HCCAST results below retain their
-device-specific historical scope.
+## Historical context
+
+The following legacy results retain their original host/device/time boundaries.
+For the latest support matrix, use [tested hardware](docs/TESTED_HARDWARE.md).
 
 ## Legacy HCCAST context
 

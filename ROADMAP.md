@@ -1,7 +1,21 @@
 # Roadmap
 
-**Pi 5 Qshot work resumed on 2026-10-01.** Bounded host-USB fixture playback
-and five-minute Mac-controlled desktop playback are verified. The separate RK-X40F gadget and firmware tracks remain parked.
+**Current scope, 2026-10-27:** Pi 500 extended desktop on LUODIER/EBPSI with
+HDMI retained. Physical video output is demonstrated; repeatable operation is
+unfinished. See [scope](docs/SCOPE.md) and [Pi 500 results](docs/PI500.md).
+
+## Next Pi 500 steps
+
+1. Diagnose the observed freeze and teardown timeout without losing Ethernet recovery.
+2. Qualify repeated manual start/stop/reconnect and clean network restoration.
+3. Verify reboot/power-cycle recovery, sustained playback and clean upgrade/uninstall.
+4. Build and inspect distributable binaries with matching source and notices;
+   publish a tagged release only after its actual acceptance gates pass.
+
+Qshot's Pi 500 wired motion test and TTQ's inconclusive connection check are
+separate compatibility results. Standalone Pi 5 boot, advanced controls, optional
+OLED rollout, RK-X40F gadget reproduction and firmware work remain separate or
+parked tracks. Historical results follow.
 
 ## Current technical alpha
 

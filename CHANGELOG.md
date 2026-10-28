@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — Pi 500 demonstration and documentation, 2026-10-28
+
+- Accept Raspberry Pi 500 in the experimental PanelBridge installer and advance
+  the development package to dev4, preserving unrelated residual package state.
+  Advanced frequency controls retain their separate Pi 5 restriction.
+- Preserve HCCAST parser resynchronization across USB reads when a startup
+  preamble arrives separately from a valid frame, with fragmentation regressions.
+- Record the October 27 Pi 500 LUODIER/EBPSI extended desktop and browser-video
+  demonstration, plus bounded Qshot USB motion; keep TTQ output unverified.
+- Add the decided scope, Pi 500 operating/result notes, updated front-door
+  documentation and owner-approved, metadata-stripped demonstration media.
+- Keep the initial freeze and later teardown timeout open. No installer release,
+  automatic-start acceptance, audio or sustained reliability is claimed.
+
 ## Unreleased — PanelBridge development snapshot
 
 - Add the experimental Pi 5 normal-desktop controller, GTK controls, scoped

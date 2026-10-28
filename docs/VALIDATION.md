@@ -31,8 +31,20 @@ enumeration, HCCAST identity, physical rendering, and broader platform support.
 | Raspberry Pi 5 Qshot host-USB fixture | 150 frames in 4.966929 s; all writes verified, clean USB close; user confirmed correct output and proportions | `HARDWARE-VERIFIED` for five seconds at a 30 fps sending rate |
 | Raspberry Pi 5 Qshot live desktop/video | 1,800 live frames in 60.044873 s, 60 ending frames, clean closure; user confirmed correct playback | `HARDWARE-VERIFIED` bounded one-minute run |
 | Raspberry Pi 5 Mac-controlled Qshot desktop | 9,000 live frames in 302.475735 s, 60 ending frames, user confirmed control and smooth completion | `HARDWARE-VERIFIED` bounded five-minute run |
+| Raspberry Pi 500 LUODIER/EBPSI extended desktop | Owner confirmed browser video while HDMI stayed responsive; short physical recording retained | `HARDWARE-VERIFIED` bounded output on 2026-10-27; repeatability remains incomplete |
+| Raspberry Pi 500 Qshot wired motion | 300 frames in 29.902 s at a 10 fps target, owner-confirmed motion, clean closure and short recordings | `HARDWARE-VERIFIED` bounded 30-second test; no persistent desktop service |
+| Raspberry Pi 500 TTQ TF39 | Dark with capture dongle; no enumeration in the Qshot USB host cable/adapter configuration | `OBSERVED` connection tests only; output unverified |
 | Raspberry Pi RK-X40F gadget output | No physical run | Not verified |
 | Second source platform, same Qshot unit | Same bounded fixture displayed on Jetson and Raspberry Pi 5 | `REPRODUCED` for this host-USB fixture only |
+
+## Pi 500 checkpoint — 2026-10-27
+
+See [the Pi 500 record](PI500.md) for configuration, operation and limitations,
+[the hardware matrix](TESTED_HARDWARE.md) for device-specific evidence, and
+[the media gallery](media/README.md) for public demonstration derivatives.
+An initial freeze and a later session teardown timeout remain unresolved. The
+successful LUODIER video and Qshot pattern do not establish automatic startup,
+clean final network restoration, sustained reliability, audio or TTQ support.
 
 ## Jetson reference — 2026-07-21
 

@@ -12,11 +12,22 @@ platform or unit completes the relevant physical path.
 | Apple Silicon MacBook Pro | Qshot V2 non-Pro | Powered `05ac:12ad` enumeration; macOS denied interface access before any HCCAST request | Historical `OBSERVED` session findings; original temporary logs unavailable at closeout |
 | Raspberry Pi 4 | Same family | Not tested as a HCCAST gadget source | Unverified target |
 | Raspberry Pi 5 Model B Rev 1.1, Debian 13 aarch64 | Qshot V2 non-Pro | Host USB `05ac:12ad`; valid SETV; 150-frame fixture, one-minute desktop/video and 9,000-frame Mac-controlled desktop in 302.475735 seconds; user confirmed correct control and playback | `HARDWARE-VERIFIED`; bounded host-USB playback `REPRODUCED` from Jetson |
+| Raspberry Pi 500 Rev 1.0, Debian 13 aarch64 / labwc | LUODIER / EBPSI | PanelBridge dev4, 1280×720 virtual output alongside HDMI; user-confirmed desktop and browser video | `HARDWARE-VERIFIED` bounded output on 2026-10-27; freeze/teardown timeout unresolved, repeatable operation incomplete |
+| Raspberry Pi 500 | TTQ TF39 | Dark through capture dongle; no enumeration in direct USB host cable/adapter test | `OBSERVED` connection results only; output unverified |
 | Raspberry Pi 500 Rev 1.0, Debian 13 aarch64 | Qshot V2 non-Pro | Host USB `05ac:12ad`; valid SETV; 300 monochrome frames at 1280x720 over 29.902 seconds, targeting 10 fps; user confirmed correct motion; clean USB closure | `HARDWARE-VERIFIED` bounded motion on 2026-10-27; desktop integration, sustained use, audio and reconnect remain unverified on this host |
 | Raspberry Pi 5 | RK-X40F-family unit | Not tested as a HCCAST gadget source | Unverified target |
 | Raspberry Pi 400 | Same family | Host ports are not presumed device-capable; not tested | Unverified |
 | R36S / RK3326 | Same family | Preserved image reports host-oriented USB configuration; no gadget test | Unverified, deferred |
 | Further selfie-monitor units or revisions beyond those above | Any source | No physical test | Unverified |
+
+## Pi 500 LUODIER/EBPSI checkpoint, 2026-10-27
+
+The owner confirmed a browser video on the Wi-Fi Direct/Miracast extra desktop
+while the HDMI desktop remained responsive. One manual stop/start succeeded.
+The initial freeze and later session teardown timeout remain unresolved, and
+clean final network restoration was not established. Automatic casting is
+disabled. See [the complete configuration and limits](PI500.md) and
+[selected physical recordings](media/README.md).
 
 ## Pi 500 Qshot checkpoint, 2026-10-27
 
@@ -40,8 +51,9 @@ The user subsequently supplied a 9.858-second original recording and a
 6.09-second GIF showing the Qshot counter advancing and wrapping. These provide
 retained physical motion evidence for a portion of the test. A separate
 6.42-second recording, identified by the user as LUODIER/EBPSI, shows video
-on that screen while HDMI retains separate desktop content. Recordings remain
-private; neither camera frame rate nor these short clips qualify sustained
+on that screen while HDMI retains separate desktop content. Original recordings remain
+private; [owner-approved silent derivatives](media/README.md) are published for
+documentation. Neither camera frame rate nor these short clips qualify sustained
 reliability, audio or TTQ compatibility.
 
 ## Pi 500 TTQ TF39 checkpoint, 2026-10-27

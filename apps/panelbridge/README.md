@@ -1,73 +1,88 @@
-# PanelBridge development snapshot
+# PanelBridge
 
-**Status: incomplete experimental source, not a finished install release.**
-PanelBridge aims to make a compact EBPSI-family wireless selfie screen the normal
-Raspberry Pi desktop monitor from startup through daily use and shutdown. It uses
-GTK4, the existing labwc session, a managed virtual output, a modified GNOME
-Network Displays sender and Wi-Fi Direct/Miracast. Ethernet remains available for
-independent recovery. VNC/noVNC is excluded from the display path.
+**Experimental source with bounded physical results; no qualified public installer
+release yet.** PanelBridge extends the normal Raspberry Pi labwc desktop onto a
+LUODIER/EBPSI wireless selfie screen using GTK4 controls, a managed virtual output,
+a modified GNOME Network Displays sender and Wi-Fi Direct/Miracast. Ethernet
+provides an independent recovery connection. VNC/noVNC is excluded from this path.
 
-## Verified scope
+## Current Pi 500 scope, 2026-10-27
 
-- **HARDWARE-VERIFIED:** normal Pi 5 desktop output on one EBPSI receiver, including
-  a bounded 30 → 15 → 30 content-frame-rate sequence with user-confirmed motion,
-  geometry and readable controls. Negotiated video remained 720p30.
-- **HARDWARE-VERIFIED:** an independent moving recovery card while the normal
-  desktop was stopped, followed by desktop restoration. Automatic rescue
-  activation remains unverified.
-- **OBSERVED:** the experimental installer completed with one privilege prompt;
-  package and configuration readback matched. The installed version is dev2 with
-  a startup-entry repair. An unattended reboot still failed to connect until a
-  manual controller recovery, so startup acceptance remains open.
-- **UNIT-TESTED / IMPLEMENTED:** controller, helper boundaries, packaging and
-  rollback code, native frame-accounting changes, advanced-control source and
-  optional local OLED integration. These labels apply to their software checks
-  and source; they do not establish physical acceptance of the whole application.
+The selected use is extra desktop space with HDMI retained. On one Pi 500 Rev 1.0
+running Debian 13 ARM64 and labwc 0.20.2, experimental `0.1.0~dev4` produced a
+1280×720 virtual output to the right of HDMI. The owner confirmed the requested
+browser video moving on LUODIER/EBPSI and the HDMI desktop remaining responsive.
+Selected physical recordings are now available in the
+[Pi 500 result record](../../docs/PI500.md) and [media gallery](../../docs/media/README.md).
 
-EBPSI USB video is **Unavailable**. Qshot USB results are a different device and
-transport. Other Pi models and Jetson video support remain untested. Optional
-OLED rollout is deferred and does not block the main-screen work.
+The installer accepts Pi 500 and preserves unrelated residual package state;
+all 60 inspected payload hashes/modes matched after installation. Automatic
+casting is disabled in this setup. One manual stop/start restored home Wi-Fi and
+connected again, but the first trial froze and a later closeout reported a session
+timeout with network restoration unconfirmed. The freeze's cause is unresolved.
+These observations prevent a reliable start/stop or unattended-use claim.
+
+Advanced frequency controls remain restricted to their separately validated Pi 5
+identity checks. Installer support for Pi 500 does not enable those controls.
+
+## Earlier Pi 5 evidence
+
+Normal desktop output on one Pi 5/EBPSI pairing is hardware-verified, including a
+bounded 30 → 15 → 30 content-frame-rate sequence with user-confirmed motion and
+geometry; negotiated video remained 720p30. An independent moving recovery card
+also worked while the desktop was stopped, followed by desktop restoration.
+Automatic rescue activation remains unverified.
+
+The earlier Pi 5 deployment used dev2 with a startup repair. Automatic connection
+after reboot failed until manual controller recovery. The older goal of running
+with only the selfie screen from boot through shutdown remains unfinished; it is
+not the current Pi 500 acceptance requirement. See [scope](../../docs/SCOPE.md).
+
+EBPSI USB video remains unavailable. Qshot HCCAST USB and TTQ DisplayPort are
+separate paths. Other host/screen combinations require their own tests. Optional
+OLED rollout is deferred.
 
 ## Next acceptance work
 
-1. Install the reviewed source changes through a safe upgrade transaction; the
-   current dev2 package rejects ordinary upgrade, and source has moved ahead.
-2. Verify unattended startup with only the selfie screen attached. HDMI was still
-   attached during the current installed desktop result. Record what the panel
-   displays before desktop connection and during shutdown.
-3. Verify reboot, disconnect/reconnect, screen power cycle, mode persistence and
-   timed rollback without a second monitor.
-4. Connect native calibration measurements to the controller. Qualify Recommended,
-   Performance and Battery Saver presets using sustained useful frames, loss,
-   latency, load, temperature/throttling and input power. No preset is qualified.
-5. Integrate the advanced helper and trusted observation adapter, qualify safe
-   recovery before frequency trials, and complete independent recovery and clean
-   uninstall acceptance. A fault injection is not an unstable-overclock result.
+1. Diagnose the Pi 500 freeze and session teardown timeout; qualify repeated
+   manual start/stop/reconnect with Ethernet recovery and the normal desktop intact.
+2. Verify reboot, screen power cycle, setting persistence and clean upgrade/removal.
+   Reconcile local startup-entry edits before integrity-checked maintenance.
+3. Measure sustained useful frames, loss, latency, CPU, temperature/throttling and
+   input power. A short encoded-buffer sample does not qualify receiver frame
+   rate or a Recommended, Performance or Battery Saver preset.
+4. Keep standalone boot, automatic rescue and advanced recovery as separate
+   acceptance work. Software tests and fault injection do not prove those gates.
 
 The Pi-built development worker has private build paths in its runtime search
-path and debug records. It must be rebuilt or sanitized and checked before binary
-redistribution. This snapshot publishes source and the pinned upstream archive;
-it does not publish development executables or an accepted installer.
+path and debug records. It must be rebuilt and inspected before redistribution,
+with matching source and dependency notices. This publication includes source,
+the pinned upstream archive and reviewed demonstration media, not development
+executables or an accepted installer.
 
-## Software checks
+## Software checks and packaging
 
-From the repository root, create the isolated development environment and run:
+From the repository root:
 
 ```bash
 uv sync --python 3.12 --frozen --extra dev
-uv run --no-sync python -B -m pytest -p no:cacheprovider -o addopts= -q tests apps/panelbridge/tests
+uv run --no-sync python -B -m pytest -p no:cacheprovider -o addopts= -q tests
+uv run --no-sync python -B -m pytest -p no:cacheprovider -o addopts= -q apps/panelbridge/tests
 ```
 
-Native sender compilation and Linux package checks require their distro build
-prerequisites. Platform skips are reported as skips, not passing hardware checks.
-Interface and build notes are under `interfaces/` and `native/wfd/`. Follow the
-root [agent contract](../../AGENTS.md) before system or hardware changes.
+Native compilation and Debian packaging require Linux distro prerequisites,
+including the GUI, network and media libraries. The root Python wheel does not
+install PanelBridge. Start with [the source-bundle contract](interfaces/SOURCE_BUNDLE.md),
+[worker build recipe](native/wfd/build-worker.sh),
+[package builder](packaging_tools/build_package.py) and
+[installer builder](packaging_tools/build_installer.py). Platform skips remain
+skips. Follow the root [agent contract](../../AGENTS.md) before system changes.
 
 ## Licensing and attribution
 
 This subtree is **GPL-3.0-or-later**; the legacy HCCAST driver keeps the root MIT
 license. [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
-preserve the GNOME Network Displays authors and dependency notices. The user
+preserve the GNOME Network Displays authors and dependency notices. The owner
 provided direction, hardware setup and physical acceptance. Recorded OpenAI Codex
 work includes implementation and review; exact historical model/version credits
-remain unrecorded. The project is not affiliated with the screen vendor.
+remain unrecorded. The project is not affiliated with the screen vendors.

@@ -1,291 +1,154 @@
-# HCCAST Wired
+# HCCAST Wired & PanelBridge
 
-An experimental userspace bridge that turns a compact, battery-backed
-RK-X40F-family selfie monitor into a wired Linux video output.
+Use compact selfie screens as Linux displays. This repository contains two
+experimental paths: **HCCAST Wired** sends H.264 video over USB to compatible
+receivers, and **PanelBridge** extends a Raspberry Pi's normal desktop onto a
+LUODIER/EBPSI screen over Wi-Fi Direct/Miracast.
 
-The physical unit is not a USB-C DisplayPort monitor. It is a fixed-function
-H.264 receiver. This project makes a Linux device present the Android-style USB
-personality the screen expects, then sends HCCAST-framed Annex-B H.264 without
-Wi-Fi, the vendor APK, or a vendor cloud service.
+**Latest milestone — 2026-10-27:** a Raspberry Pi 500 displayed a browser video
+on the LUODIER/EBPSI while its HDMI monitor remained usable. A separate Qshot V2
+non-Pro showed a moving test pattern over USB. These are physical demonstrations;
+startup, recovery and sustained reliability still need work.
 
-## Current status
+## See it working
 
-The repository also contains the experimental **PanelBridge** Raspberry Pi
-wireless-display application under `apps/panelbridge/`. Read its
-[development status and resumption steps](apps/panelbridge/README.md).
-Normal desktop output on one Pi 5/EBPSI receiver is hardware-verified, while
-unattended startup, operation with only the panel attached, calibrated presets,
-advanced recovery and clean uninstall acceptance remain incomplete. There is no
-public installer qualified for hassle-free standalone use yet.
-
-The app/firmware static investigation resumed on **2026-09-29**. The
-[current findings](docs/FIRMWARE_AND_APP_REVERSE_ENGINEERING.md) trace
-monitor and remote update clients in HCCast, HCLink and 7RYMS, and recover the
-official Pro image and bundled remote firmware. On the same date, the Qshot V2
-non-Pro displayed one user-selected H.264 image over Jetson USB-A, confirmed by
-the transfer log and a user photograph. A later five-second test established
-visible motion with 25 independent H.264 frames at 5 fps: the user confirmed the
-counter and moving square. Correcting the landscape source dimensions in SINF
-then produced a square block and unstretched numbers, confirmed by the user.
-Subsequent tests sent 50 and then 300 independent frames at 10 fps; the user
-confirmed smooth playback through the full 30-second run. A controlled five-second clip using five keyframes and 45
-predictive frames also played smoothly at 10 fps, with about 80% less video
-data for the same pattern. A later five-second test sent 150 frames at 30 fps,
-and the user confirmed smooth playback. Both predictive configurations are
-`HARDWARE-VERIFIED` on this pairing. Display cadence was not instrumented;
-a later live desktop and browser-video run is also `HARDWARE-VERIFIED` through
-its timed stop after 61.7 seconds. It targeted 30 fps and averaged 29.18 fps in
-transmission; the user confirmed playback was fine before it stopped. A subsequent Mac-controlled
-desktop session completed 306.6 seconds without issues, confirmed by the user,
-with the ending card and clean shutdown. That five-minute configuration is
-`HARDWARE-VERIFIED`. Longer and unattended runs remain untested.
-
-| Claim | Status |
+| Pi 500 extended desktop | Qshot wired motion |
 |---|---|
-| Jetson Orin Nano direct `18d1:2d00` USB gadget | `HARDWARE-VERIFIED` on one configuration |
-| `SETR -> SETV` from the physical RK-X40F-family unit | `HARDWARE-VERIFIED` |
-| Portrait `SINF` and visible H.264 test video | `HARDWARE-VERIFIED` |
-| Isolated 640x1136 Chromium/Xvfb surface on the panel | `OBSERVED` in bounded supervised runs |
-| macOS direct-host output | Diagnostic observations only; no valid HCCAST session or visible wired output |
-| Qshot V2 non-Pro on macOS | `OBSERVED` USB diagnostics; interface access denied before an HCCAST request |
-| Qshot V2 non-Pro on Jetson USB-A | `HARDWARE-VERIFIED` SETR → SETV, landscape SINF, visible 1280x720 still, independent-frame motion up to 30 seconds at 10 fps and five-second predictive playback at 30 fps, and live desktop/video for 61.7 seconds with a 30 fps target and corrected landscape proportions; `HC15B100`, version `2511261024` |
-| Qshot V2 Pro firmware | `OBSERVED` offline inspection; compatibility with the non-Pro remains unverified |
-| Raspberry Pi 5 USB host to Qshot V2 non-Pro | `HARDWARE-VERIFIED`: five-second fixture, one-minute video and five-minute Mac-controlled desktop at 1280x720, targeting 30 fps; correct output and control confirmed |
-| R36S and additional monitor revisions | Deferred compatibility targets |
-| Independent second platform | `REPRODUCED`: bounded Qshot host-USB playback on Jetson and Raspberry Pi 5; no second screen unit tested |
+| ![LUODIER playing video below the Pi's separate HDMI desktop](docs/media/pi500-luodier-extended-desktop.jpg) | ![Qshot counter and moving block over wired USB](docs/media/pi500-qshot-motion.gif) |
+| [Watch the 6.4-second clip](docs/media/pi500-luodier-extended-desktop.mp4) | [Watch the 9.9-second original-length clip](docs/media/pi500-qshot-wired.mp4) |
 
-The known-good reference path is:
+The left screen is **LUODIER/EBPSI**, not TTQ. The Qshot GIF shows a portion of a
+30-second test; its loop is not a continuous reliability run. Clips are silent,
+metadata-stripped derivatives of the owner's recordings. See
+[media captions and provenance](docs/media/README.md) for reusable assets and
+what each image establishes.
 
-```text
-Jetson USB-C device-capable port
-  -> direct Android Open Accessory identity 18d1:2d00
-  -> ConfigFS + FunctionFS bulk endpoints
-  -> HCCAST SETR / valid SETV
-  -> portrait SINF
-  -> Annex-B H.264 in VID frames
-  -> visible pixels on the physical screen
-```
+## Which screen and connection?
 
-The RK-X40F gadget path above remains a separate, unverified Pi target. The
-Qshot host-USB path has now been reproduced on Pi 5; it does not require a UDC.
+| Screen | Path | What is established |
+|---|---|---|
+| LUODIER / EBPSI | PanelBridge → Wi-Fi Direct / Miracast | Pi 500 extra desktop and video, with HDMI retained; earlier Pi 5 normal-desktop output also verified |
+| 7RYMS Qshot V2 **non-Pro** | Pi USB 3 Type-A → data cable/adapter → Qshot USB-C socket labelled **UVC** | HCCAST handshake and 1280×720 moving pattern: 300 frames over 29.902 seconds, targeting 10 fps on Pi 500 |
+| TTQ TF39 | Its documented input is USB-C DisplayPort Alternate Mode | Same USB host cable/adapter test produced no TTQ enumeration or picture; Pi output remains unverified |
+| RK-X40F family | Jetson USB gadget → screen acting as USB host | Historical wired H.264 reference path verified on one unit; Pi gadget reproduction remains untested |
 
-## Why this hardware is useful
+A USB-C connector or a “UVC” label does not establish a shared protocol. The
+Qshot test used **HCCAST**, not standard UVC. An HDMI capture dongle converts
+HDMI into USB capture data; it is not an HDMI-to-USB-C DisplayPort monitor adapter.
+The [hardware matrix](docs/TESTED_HARDWARE.md) records each pairing separately.
 
-The screen combines a small LCD, decoder, controls, enclosure, and internal
-battery in one inexpensive consumer product. It avoids the exposed driver boards,
-fragile bare-panel edges, and custom enclosure work common to repurposed display
-modules.
+## Current scope: an extra screen for Pi 500
 
-This bridge is not a conventional monitor driver. Linux renders an isolated
-virtual surface, encodes it, and streams compressed video:
+The selected use is a LUODIER/EBPSI **extended desktop**, with the main HDMI
+monitor still working. Ethernet stays connected for internet access and SSH
+recovery while Wi-Fi carries the display. The Pi 500 demonstration used Debian
+13 ARM64, labwc, and experimental PanelBridge `0.1.0~dev4`, with a 1280×720 virtual
+output placed to the right of HDMI. The owner confirmed the requested YouTube
+video moving and the HDMI desktop responding.
 
-```text
-virtual UI or desktop
-  -> H.264 Annex-B encoder
-  -> HCCAST framing
-  -> wired USB bulk transport
-  -> screen decoder and LCD
-```
+Read the [decided scope](docs/SCOPE.md) and
+[Pi 500 setup and result record](docs/PI500.md). Earlier standalone, sole-monitor
+boot work on Pi 5 remains a separate unfinished goal.
 
-The bridge does not expose a Linux Direct Rendering Manager/KMS connector. The
-known wired interface accepts H.264 through HCCAST, and no pixel-addressable
-framebuffer transport is currently known.
+**Known limits:** the first Pi 500 trial froze and needed a physical restart;
+the cause was not established. A later start/stop worked, but a closeout check
+reported a session timeout and did not establish clean network restoration.
+Automatic casting is disabled in the tested setup. Audio, repeated reconnects,
+long unattended use and a fresh-user install have not passed acceptance. There
+is no qualified public PanelBridge installer release yet.
 
-## Core protocol finding
+## How it works
 
-APK analysis established this factory Android pipeline:
+PanelBridge keeps the normal labwc desktop and creates another output:
 
 ```text
-MediaProjection -> MediaCodec H.264 -> HCCAST packets -> USB -> screen decoder
+Pi desktop → managed virtual output → native H.264 sender
+           → Wi-Fi Direct / Miracast → LUODIER / EBPSI
 ```
 
-The screen family supports two opposite USB relationships:
+HCCAST Wired sends compressed video through the receiver's proprietary framing:
 
 ```text
-A. Linux/Android host -> monitor USB peripheral
-   APK-derived filters: 05ac:12ad or abcd:0002
-   hardware-observed transient candidate: 1cbe:0005
-
-B. monitor USB host -> Linux/Android USB gadget
-   hardware-verified Jetson identity: 18d1:2d00
+video or virtual surface → H.264 Annex-B → HCCAST frames → USB → screen
 ```
 
-Backend B produced the reference RK-X40F-family result. The screen configured the FunctionFS
-bulk endpoints and returned a structurally valid 316-byte `SETV` identifying
-product `HCT-AT01`. The generic pre-AOA identity reached FunctionFS enable, but
-this unit did not emit Android Open Accessory requests 51/52/53. Direct
-`18d1:2d00` is therefore the reference path for this unit.
+The legacy driver implements framing, fragmented-stream parsing, SETR/SETV
+identification, SINF geometry and VID streaming. Its USB-host backend serves the
+Qshot; its ConfigFS/FunctionFS gadget backend serves the separate Jetson reference
+path. It does not expose a Linux DRM/KMS monitor connector. The Pi 500 Qshot demo
+was a bounded pattern sender, not an installed extended-desktop service.
 
-Backend A produced the Qshot V2 non-Pro result: Jetson USB-A host to `05ac:12ad`,
-valid SETV, landscape SINF, a physically visible H.264 still and independent-frame
-motion at 5 and 10 fps, with 30 seconds verified at 10 fps. Five-second predictive
-playback at a 30 fps sending rate is also hardware-verified. This topology does
-not reproduce the reference gadget path.
+See [architecture](docs/ARCHITECTURE.md),
+[protocol investigation](docs/REVERSE_ENGINEERING.md), and
+[PanelBridge source and status](apps/panelbridge/README.md).
 
-## Implemented
+## Try the software checks
 
-- Exact 16-byte HCCAST frame serialization and parsing.
-- Fragmented and coalesced USB stream parsing.
-- `SETR -> SETV` session handshake.
-- `SETS` configuration and `SINF` screen metadata.
-- `VID` streaming with Annex-B start codes preserved.
-- Access-unit and NAL packetization.
-- Logical video frames larger than 64 KiB.
-- 16 KiB USB transfer chunking matching the factory app.
-- Direct PyUSB host backend.
-- ConfigFS + FunctionFS Linux gadget backend.
-- Negotiated AOA requests 51/52/53.
-- Direct `18d1:2d00` AOA personality.
-- Bounded live virtual-display controller with checked cleanup and private
-  evidence handling.
-- Deterministic software tests for protocol, USB abstractions, controller
-  lifecycle, cleanup, telemetry, and public-repository controls.
-
-## Not yet verified
-
-- Raspberry Pi RK-X40F gadget output and Qshot sessions longer than five minutes.
-- HCCAST video output on a second monitor unit or hardware revision.
-- Automatic recovery after cable or screen-power loss.
-- Reboot recovery and persistent service behavior.
-- Audio.
-- Long unattended stability.
-- macOS as a wired HCCAST video source.
-- R36S gadget operation.
-- DRM/KMS integration.
-
-## Raspberry Pi target
-
-`HARDWARE-VERIFIED` / `REPRODUCED`, 2026-10-01: Qshot V2 non-Pro host-USB
-playback was reproduced on Raspberry Pi 5 on 2026-10-01: 150 frames at a 30 fps
-sending rate, 1280x720 landscape, with user-confirmed motion and correct
-proportions. A later 60-second isolated desktop and sample-video test is also
-`HARDWARE-VERIFIED`: 1,800 live frames in 60.044873 seconds, followed by
-60 ending-card frames, with user-confirmed correct playback and clean closure.
-
-A subsequent Mac-controlled Pi desktop session is also `HARDWARE-VERIFIED`:
-9,000 live frames in 302.475735 seconds (29.75 fps average transmission),
-then 60 ending frames. The user confirmed correct Mac control and smooth Qshot
-output through the ending card. USB, temporary desktop processes, preview
-listeners and the Mac SSH tunnel closed. Longer Pi sessions remain untested.
-
-
-The separate RK-X40F gadget reproduction remains a portability exercise. It
-must establish all of the following:
-
-1. The selected Pi, kernel, device tree, port, and power topology expose a usable
-   USB Device Controller.
-2. The Pi enumerates directly as `18d1:2d00`.
-3. The screen configures the FunctionFS bulk endpoints.
-4. `SETR` receives a valid, parsed `SETV`.
-5. The known-good portrait H.264 fixture produces visible pixels.
-6. The run cleans up its gadget and processes and restores the Pi's expected
-   stopped state.
-7. Only after parity is proven does the isolated virtual-display pipeline move
-   to the Pi.
-
-See [the reproduction record](docs/REPRODUCTION.md), the
-[tested-hardware matrix](docs/TESTED_HARDWARE.md), and the
-[roadmap](ROADMAP.md).
-
-## macOS result
-
-The Mac remains useful for development, tests, USB-C/Power Delivery
-instrumentation, and passive/direct-host diagnostics.
-
-Historical `HARDWARE-VERIFIED` observations from the Apple Silicon Mac with the
-RK-X40F-family unit:
-
-- Direct C-to-C placed the Mac in USB Device role and exposed no addressable
-  monitor peripheral.
-- A USB-A host-forcing topology placed the Mac in Host role.
-- The screen transiently exposed `1cbe:0005`, USB 2.0 High Speed, interface
-  `ff/06/50`, bulk IN `0x81`, and bulk OUT `0x02`.
-- Userspace briefly claimed the interface.
-- Holding that claim did not prevent the repeatable detach.
-- One bounded `SETR` was accepted at the transport layer, but no response bytes
-  or valid `SETV` arrived.
-
-These are diagnostic facts, not a functioning macOS display path. The project
-does not currently send video from macOS.
-
-### Qshot V2 checkpoint — 2026-09-27
-
-`OBSERVED`, recorded during the Qshot session: the separately powered non-Pro
-screen exposed `05ac:12ad`, interface `ff/2a/ff`, and stayed present throughout a
-30-second observation. macOS denied interface access with the missing entitlement
-`com.apple.coremedia.valeria.allow`; the single approved probe sent no HCCAST
-payload. No Qshot `SETV` or wired Mac video was established.
-
-`OBSERVED`, recorded during offline inspection: official Qshot V2 Pro firmware
-1.2.7 contains matching USB descriptor templates and HCCast mirroring components.
-`INFERRED`: a shared platform is plausible; firmware interchangeability is
-unverified. No firmware was installed.
-
-At session closeout, the original temporary logs and firmware files were no
-longer present. These are retained session findings, not freshly repeated
-measurements. See the [validation ledger](docs/VALIDATION.md).
-
-## Software-only development
-
-Read [AGENTS.md](AGENTS.md) before changing the repository. It is the binding
-authority and evidence contract. [CLAUDE.md](CLAUDE.md) provides the concise
-Claude Code operating map, while [MODEL_CONTEXT.md](MODEL_CONTEXT.md) carries the
-short current status.
-
-Use an isolated `uv` environment. A human preparing a checkout can provision the
-development dependencies with:
+Development uses `uv` and Python 3.12 or 3.13. From your checkout root:
 
 ```bash
-uv sync --extra dev
-```
-
-Once provisioned, the non-synchronizing verification gate is:
-
-```bash
-uv run --no-sync pytest -p no:cacheprovider -o addopts= -q
+uv sync --python 3.12 --frozen --extra dev
+uv run --no-sync python -B -m pytest -p no:cacheprovider -o addopts= -q tests
+uv run --no-sync python -B -m pytest -p no:cacheprovider -o addopts= -q apps/panelbridge/tests
 uv run --no-sync ruff check src tests
 uv run --no-sync mypy src/hccast_wired/live
-python3 -m compileall -q src tests
+uv run --no-sync hccast-wired --help
 ```
 
-Passing software tests support `UNIT-TESTED` claims only. They do not establish
-USB enumeration, a HCCAST handshake, or physical rendering.
+The root package supports Python 3.10+; PanelBridge development checks use 3.12+.
+These tests exercise software behavior and packaging contracts, not physical
+screens. Platform-dependent skips remain skips.
 
-Hardware, remote access, package installation, and publication use the explicit
-authorization boundaries in `AGENTS.md`.
+Build the legacy Python wheel and source distribution with:
+
+```bash
+uv build --out-dir dist
+```
+
+That wheel is **HCCAST Wired only**. PanelBridge additionally needs Linux distro
+Python/GI, GTK4, labwc, NetworkManager, GStreamer and a compiled native worker;
+installing the Python wheel does not install PanelBridge. Start with
+[first-run navigation](docs/FIRST_RUN.md) and the
+[PanelBridge build interfaces](apps/panelbridge/interfaces/SOURCE_BUNDLE.md).
+Hardware recipes must match the actual host, screen and recovery connection.
+
+## Earlier results and remaining work
+
+Qshot host-USB playback was previously reproduced on Jetson and Pi 5. The Pi 5
+record includes a five-minute controlled desktop/video session at a 30 fps target.
+Those results do not extend the Pi 500's 30-second Qshot acceptance window.
+The Jetson RK-X40F gadget result is another distinct transport. macOS remains a
+development/diagnostic platform; wired Mac output is unverified.
+
+Next work is repeatable Pi 500 startup, disconnect/reconnect and restoration,
+followed by longer observed use and install/uninstall qualification. Receiver
+frame rate, latency and power need measurement before performance claims.
+TTQ needs a separate compatible-input test. No firmware change is needed or
+proposed for these results.
 
 ## Documentation
 
-- [Claude Code orientation](CLAUDE.md)
-- [Current model context](MODEL_CONTEXT.md)
-- [Architecture](docs/ARCHITECTURE.md)
+- [Scope](docs/SCOPE.md) and [Pi 500 demonstration](docs/PI500.md)
+- [Tested hardware](docs/TESTED_HARDWARE.md) and [media assets](docs/media/README.md)
 - [Validation and claim ledger](docs/VALIDATION.md)
-- [Tested hardware](docs/TESTED_HARDWARE.md)
 - [Reference reproduction and Raspberry Pi parity](docs/REPRODUCTION.md)
+- [Roadmap](ROADMAP.md) and [changelog](CHANGELOG.md)
 - [First-pixels lab record](docs/lab/2026-07-first-pixels.md)
-- [Roadmap](ROADMAP.md)
-- [Bounded agent tasks](docs/AGENT_TASKS.md)
-- [Contributing](CONTRIBUTING.md)
-- [Protocol reverse engineering](docs/REVERSE_ENGINEERING.md)
-- [RK-X40F manual findings](docs/RK-X40F_MANUAL_FINDINGS.md)
-- [WhatCable instrumentation](docs/WHATCABLE.md)
+- [Agent contract](AGENTS.md), [Claude orientation](CLAUDE.md), and [current context](MODEL_CONTEXT.md)
+- [Bounded agent tasks](docs/AGENT_TASKS.md) and [contributing](CONTRIBUTING.md)
+- [RK-X40F manual findings](docs/RK-X40F_MANUAL_FINDINGS.md) and [WhatCable instrumentation](docs/WHATCABLE.md)
 
-## Provenance and boundaries
+## Provenance and licenses
 
-The implementation was reconstructed from the behavior of an owned device,
-factory application analysis, USB instrumentation, and bounded physical tests.
-The repository contains original project code and documentation. It does not
-include vendor APKs, firmware, decompiled vendor source, vendor manual files, raw
-private logs, credentials, or metadata-bearing observation media.
+This hobbyist interoperability project was developed through owned-device
+experiments, factory-app analysis and bounded physical tests. It is not clinical
+software and is not affiliated with the screen vendors. Raw logs, credentials,
+host bindings, vendor firmware and vendor APKs are excluded. Selected owner
+recordings are published with permission after metadata review.
 
-This is an experimental technical alpha, not clinical software.
-
-## License
-
-The legacy HCCAST driver and its original documentation retain the root
-[MIT license](LICENSE); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-The application under `apps/panelbridge/`, including its original code, native
-additions, packaging, documentation and artwork, has a separate
-[GPL-3.0-or-later license](apps/panelbridge/LICENSE) and
-[third-party notices](apps/panelbridge/THIRD_PARTY_NOTICES.md). Upstream components
-retain their own licenses and notices.
+The legacy HCCAST driver and its original documentation retain the
+[MIT license](LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.md).
+PanelBridge has a separate [GPL-3.0-or-later license](apps/panelbridge/LICENSE)
+and [notices](apps/panelbridge/THIRD_PARTY_NOTICES.md), including its modified
+GNOME Network Displays source. Third-party on-screen content in demonstration
+media retains its own rights; see the [media notes](docs/media/README.md).
