@@ -402,7 +402,7 @@ def _host(environment):
     if platform.system() != "Linux" or platform.machine() != "aarch64":
         raise InstallRefused("unsupported_host")
     model = _read_system("/sys/firmware/devicetree/base/model", 256).rstrip(b"\0\n")
-    if not model.startswith(b"Raspberry Pi 5 Model B"):
+    if not re.fullmatch(rb"Raspberry Pi (?:5 Model B|500) Rev [0-9]+\.[0-9]+", model):
         raise InstallRefused("unsupported_host")
     values = {}
     for line in _read_system("/usr/lib/os-release", 8192).decode("ascii").splitlines():

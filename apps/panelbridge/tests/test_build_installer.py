@@ -150,6 +150,35 @@ def bootstrap():
     return module
 
 
+@pytest.mark.parametrize("model", [
+    b"Raspberry Pi 5 Model B Rev 1.1\0",
+    b"Raspberry Pi 500 Rev 1.0\0",
+])
+def test_installer_accepts_supported_desktop_boards(bootstrap, monkeypatch, model):
+    monkeypatch.setattr(bootstrap.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(bootstrap.platform, "machine", lambda: "aarch64")
+    files = {
+        "/sys/firmware/devicetree/base/model": model,
+        "/usr/lib/os-release": b'ID=debian\nVERSION_ID="13"\nVERSION_CODENAME=trixie\n',
+    }
+    monkeypatch.setattr(bootstrap, "_read_system", lambda path, limit: files[path])
+    monkeypatch.setattr(bootstrap, "_checked", lambda args, env: b"arm64\n")
+    bootstrap._host({})
+
+
+@pytest.mark.parametrize("model", [
+    b"Raspberry Pi 400 Rev 1.0\0",
+    b"Raspberry Pi 500+ Rev 1.0\0",
+    b"Raspberry Pi 5 Model B Replica Rev 1.0\0",
+])
+def test_installer_rejects_unqualified_board_variants(bootstrap, monkeypatch, model):
+    monkeypatch.setattr(bootstrap.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(bootstrap.platform, "machine", lambda: "aarch64")
+    monkeypatch.setattr(bootstrap, "_read_system", lambda path, limit: model)
+    with pytest.raises(bootstrap.InstallRefused, match="unsupported_host"):
+        bootstrap._host({})
+
+
 def test_unfinished_gate_precedes_every_privileged_boundary(bootstrap, monkeypatch, capsys):
     monkeypatch.setattr(bootstrap, "EXPERIMENTAL_INSTALL_ENABLED", False)
     monkeypatch.setattr(bootstrap, "_bundle", lambda: ({}, {}, {}))

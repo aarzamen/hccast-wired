@@ -25,7 +25,7 @@ import tarfile
 
 from . import source_bundle as source
 
-VERSION = "0.1.0~dev3"
+VERSION = "0.1.0~dev4"
 NAME = f"panelbridge_{VERSION}_arm64"
 MAX_INPUT = 64 * 1024 * 1024
 MAX_PAYLOAD = 128 * 1024 * 1024
