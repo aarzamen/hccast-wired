@@ -36,6 +36,14 @@ All 302 outgoing message hashes matched the prepared identification, geometry an
 video sequence. This is bounded physical motion, not a normal extended desktop
 or long-term reliability result. No firmware, kernel or boot change was made.
 
+The user subsequently supplied a 9.858-second original recording and a
+6.09-second GIF showing the Qshot counter advancing and wrapping. These provide
+retained physical motion evidence for a portion of the test. A separate
+6.42-second recording, identified by the user as LUODIER/EBPSI, shows video
+on that screen while HDMI retains separate desktop content. Recordings remain
+private; neither camera frame rate nor these short clips qualify sustained
+reliability, audio or TTQ compatibility.
+
 ## Pi 500 TTQ TF39 checkpoint, 2026-10-27
 
 Pi-to-TTQ output remains unverified. After the initial HDMI capture-card
