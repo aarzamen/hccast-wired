@@ -291,6 +291,20 @@ def test_inventory_rejects_prior_app_and_broken_state_but_accepts_held_packages(
             bootstrap._inventory({})
 
 
+def test_inventory_preserves_install_selected_residual_configuration(bootstrap, monkeypatch):
+    rows = (b"labwc\tii \t0.20.2\tarm64\n"
+            b"network-manager\tii \t1.52\tarm64\n"
+            b"systemd\tii \t257\tarm64\n"
+            b"gnome-menus\tic \t3.36.0-3\tarm64\n")
+    monkeypatch.setattr(bootstrap, "_checked",
+                        lambda args, env, **kw: b"" if args[1] == "--audit" else rows)
+    inventory = bootstrap._package_state({})
+    assert inventory["gnome-menus"] == {
+        "status": "ic ", "version": "3.36.0-3", "architecture": "arm64",
+    }
+    assert "gnome-menus" not in bootstrap._fresh_inventory(inventory)
+
+
 @pytest.fixture
 def engine(bootstrap, monkeypatch):
     from packaging_tools import apt_plan

@@ -422,7 +422,7 @@ def _validate_inventory(rows):
         if (not isinstance(name, str) or len(name) > 256
                 or not re.fullmatch(r"[a-z0-9][a-z0-9+.-]+(?::[a-z0-9-]+)?", name)
                 or not isinstance(row, dict) or set(row) != {"status", "version", "architecture"}
-                or row["status"] not in ("ii ", "hi ", "rc ", "un ")
+                or row["status"] not in ("ii ", "hi ", "rc ", "ic ", "un ")
                 or not isinstance(row["version"], str) or len(row["version"]) > 256
                 or not re.fullmatch(r"[0-9][A-Za-z0-9.+:~\-]*|", row["version"])
                 or not isinstance(row["architecture"], str)
