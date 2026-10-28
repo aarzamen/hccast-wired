@@ -12,10 +12,29 @@ platform or unit completes the relevant physical path.
 | Apple Silicon MacBook Pro | Qshot V2 non-Pro | Powered `05ac:12ad` enumeration; macOS denied interface access before any HCCAST request | Historical `OBSERVED` session findings; original temporary logs unavailable at closeout |
 | Raspberry Pi 4 | Same family | Not tested as a HCCAST gadget source | Unverified target |
 | Raspberry Pi 5 Model B Rev 1.1, Debian 13 aarch64 | Qshot V2 non-Pro | Host USB `05ac:12ad`; valid SETV; 150-frame fixture, one-minute desktop/video and 9,000-frame Mac-controlled desktop in 302.475735 seconds; user confirmed correct control and playback | `HARDWARE-VERIFIED`; bounded host-USB playback `REPRODUCED` from Jetson |
+| Raspberry Pi 500 Rev 1.0, Debian 13 aarch64 | Qshot V2 non-Pro | Host USB `05ac:12ad`; valid SETV; 300 monochrome frames at 1280x720 over 29.902 seconds, targeting 10 fps; user confirmed correct motion; clean USB closure | `HARDWARE-VERIFIED` bounded motion on 2026-10-27; desktop integration, sustained use, audio and reconnect remain unverified on this host |
 | Raspberry Pi 5 | RK-X40F-family unit | Not tested as a HCCAST gadget source | Unverified target |
 | Raspberry Pi 400 | Same family | Host ports are not presumed device-capable; not tested | Unverified |
 | R36S / RK3326 | Same family | Preserved image reports host-oriented USB configuration; no gadget test | Unverified, deferred |
 | Further selfie-monitor units or revisions beyond those above | Any source | No physical test | Unverified |
+
+## Pi 500 Qshot checkpoint, 2026-10-27
+
+The first identification attempt exposed a stream-parser bug: a startup preamble
+arriving separately from SETV could make the parser consume part of the valid
+response as a misaligned unknown frame. The parser now retains resynchronization
+state across reads. A regression failed before the fix; all 716 legacy-driver
+tests passed afterward, including every split of the captured input shape and
+preservation of aligned unknown commands. Independent source review found no
+material issue.
+
+After the fix, a five-second 150-frame/30-fps transfer completed and closed USB,
+but the user missed its physical observation; it is transmission evidence only.
+A later 30-second test sent 300 independent monochrome frames at 10 fps in
+29.902 seconds, and the user confirmed the screen was working correctly.
+All 302 outgoing message hashes matched the prepared identification, geometry and
+video sequence. This is bounded physical motion, not a normal extended desktop
+or long-term reliability result. No firmware, kernel or boot change was made.
 
 ## Verified Jetson topology
 
