@@ -38,12 +38,21 @@ or long-term reliability result. No firmware, kernel or boot change was made.
 
 ## Pi 500 TTQ TF39 checkpoint, 2026-10-27
 
-Pi-to-TTQ output remains unverified. The user reported a powered but dark
-screen; the supplied adapter photo identifies an HDMI-to-USB capture card,
-not a converter that drives a USB-C DisplayPort monitor. This connection does
-not test TTQ compatibility. Retest requires an active HDMI-source-to-USB-C
-DisplayPort display converter, suitable screen power and a video-capable
-USB-C cable. No TTQ protocol commands or boot-setting changes were made.
+Pi-to-TTQ output remains unverified. After the initial HDMI capture-card
+connection produced a powered but dark screen, the user connected TTQ's Video
+port through the same cable/adapter and Pi USB 3 Type-A port used for Qshot.
+Passive USB enumeration then found only the hub, mouse, boot-drive bridge and
+keyboard: no TTQ or video-class interface. No TTQ protocol commands, interface
+claims, resets or configuration changes were made. This is an observed result
+for that connection, not proof that the screen is defective.
+
+The user identified UVC on Qshot's socket, and Video, Power and Audio on TTQ.
+The successful Qshot test used HCCAST; it does not establish standard UVC
+operation or transfer compatibility to TTQ. The TF39 quick guide specifies
+DisplayPort Alternate Mode. Its documented display path requires a correctly
+directed active HDMI-to-USB-C DisplayPort converter with suitable power/cable
+on this Pi. A capture card could instead feed a compatible UVC-host display,
+but no such TTQ mode was established in this session.
 
 ## Verified Jetson topology
 
