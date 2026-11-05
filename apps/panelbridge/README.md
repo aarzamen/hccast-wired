@@ -56,9 +56,10 @@ OLED rollout is deferred.
 
 The Pi-built development worker has private build paths in its runtime search
 path and debug records. It must be rebuilt and inspected before redistribution,
-with matching source and dependency notices. This publication includes source,
-the pinned upstream archive and reviewed demonstration media, not development
-executables or an accepted installer.
+with matching source and dependency notices; [the release path](interfaces/RELEASE.md)
+describes that rebuild and the checks `packaging_tools/release.py` applies. This
+publication includes source, the pinned upstream archive and reviewed
+demonstration media, not development executables or an accepted installer.
 
 ## Software checks and packaging
 
@@ -75,8 +76,9 @@ including the GUI, network and media libraries. The root Python wheel does not
 install PanelBridge. Start with [the source-bundle contract](interfaces/SOURCE_BUNDLE.md),
 [worker build recipe](native/wfd/build-worker.sh),
 [package builder](packaging_tools/build_package.py) and
-[installer builder](packaging_tools/build_installer.py). Platform skips remain
-skips. Follow the root [agent contract](../../AGENTS.md) before system changes.
+[installer builder](packaging_tools/build_installer.py);
+[release.py](packaging_tools/release.py) chains them and cross-checks the result,
+and CI runs its source-only stage. Platform skips remain skips. Follow the root [agent contract](../../AGENTS.md) before system changes.
 
 ## Licensing and attribution
 

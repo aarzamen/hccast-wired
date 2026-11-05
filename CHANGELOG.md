@@ -2,6 +2,12 @@
 
 ## Unreleased — Pi 500 demonstration and documentation, 2026-10-28
 
+- Add `apps/panelbridge/packaging_tools/release.py`, which chains the source
+  bundle, ARM64 package and installer builders, refuses a worker with
+  development paths or debug records, cross-checks the artifacts and records
+  them in `RELEASE_MANIFEST.json` with `release_ready: false`. CI runs its
+  platform-independent source-only stage. No installer release is created;
+  the legacy wheel still delivers only the MIT driver.
 - Accept Raspberry Pi 500 in the experimental PanelBridge installer and advance
   the development package to dev4, preserving unrelated residual package state.
   Advanced frequency controls retain their separate Pi 5 restriction.

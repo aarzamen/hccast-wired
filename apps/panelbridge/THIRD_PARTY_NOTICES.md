@@ -60,6 +60,23 @@ implementation/review recorded for this build. Earlier model/version authorship
 is not recorded. The PanelBridge icon is original project artwork; it is not
 the upstream GNOME Network Displays icon.
 
+### Dated modification record
+
+- 2026-10-01: the four patches above and the PanelBridge native files modify
+  GNOME Network Displays 0.99.0 as described; this is the modification date for
+  the GND-derived sender.
+- 2026-10-27: `0.1.0~dev4` changed only PanelBridge-original installer and
+  package tooling (`packaging/installer-bootstrap.py`,
+  `packaging_tools/build_package.py`) to accept Raspberry Pi 500 and preserve
+  residual package configuration. The GND-derived sender sources and patches
+  were not modified.
+- 2026-11-05: `packaging_tools/release.py`, `tests/test_release.py` and
+  `interfaces/RELEASE.md` were added as PanelBridge-original release tooling
+  under GPL-3.0-or-later; this notice was revised. No sender change.
+
+These entries are the dated change notices that accompany the patched sender
+when it is redistributed; the per-file upstream notices remain in the archive.
+
 ## Runtime and build dependencies
 
 The Raspberry Pi build uses distro-provided libraries and tools. The table
