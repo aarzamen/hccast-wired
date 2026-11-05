@@ -30,6 +30,11 @@ this version since the undated legacy entries further down.
   readable, and `--loop` is refused with stdin, all before a host transport is
   opened or a gadget is created. The session API applies the same limits and
   a packet limit now sends exactly that many packets.
+- Make failed gadget cleanup observable to direct CLI users. Cleanup returns
+  a structured report of attempted actions, failures and verified or failed
+  postconditions (UDC released, FunctionFS unmounted, mount point and gadget
+  removed); `gadget-stop`, `gadget-handshake` and `gadget-stream` print it and
+  exit 4 when anything remains instead of logging completion and returning 0.
 - Track every ConfigFS resource a `gadget-handshake`/`gadget-stream` run
   creates or binds, and release only those on exit. A second start that is
   rejected because the gadget already exists no longer unbinds or removes the

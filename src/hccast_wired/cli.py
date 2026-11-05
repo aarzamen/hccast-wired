@@ -19,6 +19,7 @@ from .gadget import (
     AOA_VENDOR_ID,
     DEFAULT_PRE_AOA_PRODUCT_ID,
     DEFAULT_PRE_AOA_VENDOR_ID,
+    CleanupReport,
     ConfigFSGadget,
 )
 from .host_usb import HostUSBTransport, enumerate_candidates
@@ -27,6 +28,22 @@ from .session import HCCASTSession, validate_stream_file, validate_stream_limits
 from .setr_probe import SetrOnceClassification, run_setr_once
 
 LOG = logging.getLogger(__name__)
+
+# Exit status when the command itself ran but gadget cleanup left resources
+# behind. Distinct from 1 (command failed) and 2 (usage error) so wrappers can
+# tell "stop again or inspect" from "the stream failed".
+EXIT_CLEANUP_INCOMPLETE = 4
+
+
+def _report_cleanup(report: CleanupReport, *, operation: str) -> None:
+    """Print the structured cleanup report; failures go to stderr."""
+
+    body = json.dumps({"operation": operation, "cleanup": report.to_mapping()}, sort_keys=True, indent=2)
+    if report.success:
+        print(body)
+    else:
+        print(f"ERROR: {operation} cleanup incomplete; inspect and run gadget-stop:", file=sys.stderr)
+        print(body, file=sys.stderr)
 
 
 def _int_auto(value: str) -> int:
@@ -313,6 +330,7 @@ def _run_gadget(args: argparse.Namespace, *, stream: bool) -> int:
 
     previous_sigint = signal.signal(signal.SIGINT, handle_signal)
     previous_sigterm = signal.signal(signal.SIGTERM, handle_signal)
+    cleanup_report: CleanupReport | None = None
 
     try:
         negotiate = args.aoa_mode == "negotiate"
@@ -386,7 +404,6 @@ def _run_gadget(args: argparse.Namespace, *, stream: bool) -> int:
                 )
             print("Stream complete:")
             _print_device_info(stats)
-        return 0
     finally:
         signal.signal(signal.SIGINT, previous_sigint)
         signal.signal(signal.SIGTERM, previous_sigterm)
@@ -397,9 +414,16 @@ def _run_gadget(args: argparse.Namespace, *, stream: bool) -> int:
             transport.close()
         if control is not None:
             control.close()
-        gadget.cleanup()
+        cleanup_report = gadget.cleanup()
+        if not cleanup_report.success:
+            _report_cleanup(cleanup_report, operation="gadget-stream" if stream else "gadget-handshake")
         if interrupted:
             LOG.info("interrupted cleanly")
+    # Only reached when the session itself completed; a cleanup that left the
+    # UDC, mount or gadget behind is still a failure for the operator.
+    if not cleanup_report.success:
+        return EXIT_CLEANUP_INCOMPLETE
+    return 0
 
 
 def command_gadget_handshake(args: argparse.Namespace) -> int:
@@ -411,12 +435,15 @@ def command_gadget_stream(args: argparse.Namespace) -> int:
 
 
 def command_gadget_stop(args: argparse.Namespace) -> int:
-    ConfigFSGadget.force_cleanup(
+    """Explicit stale-state removal; the report and exit status say what remains."""
+
+    report = ConfigFSGadget.force_cleanup(
         name=args.gadget_name,
         function_name=args.function_name,
         mountpoint=args.mountpoint,
     )
-    return 0
+    _report_cleanup(report, operation="gadget-stop")
+    return 0 if report.success else EXIT_CLEANUP_INCOMPLETE
 
 
 def add_common_session_options(parser: argparse.ArgumentParser) -> None:
@@ -595,7 +622,13 @@ def build_parser() -> argparse.ArgumentParser:
     add_stream_options(gadget_stream)
     gadget_stream.set_defaults(func=command_gadget_stream)
 
-    stop = sub.add_parser("gadget-stop", help="remove a stale hccast ConfigFS gadget")
+    stop = sub.add_parser(
+        "gadget-stop",
+        help=(
+            "remove a stale hccast ConfigFS gadget; prints a cleanup report and exits "
+            f"{EXIT_CLEANUP_INCOMPLETE} if the UDC, mount or gadget remains"
+        ),
+    )
     stop.add_argument("--mountpoint", default="/dev/ffs-hccast")
     stop.add_argument("--gadget-name", default="hccast")
     stop.add_argument("--function-name", default="hccast")

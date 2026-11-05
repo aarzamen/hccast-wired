@@ -8,6 +8,8 @@ what is under test.
 from __future__ import annotations
 
 import argparse
+import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -259,3 +261,277 @@ def test_force_cleanup_is_the_explicit_stale_state_removal(
         "mountpoint": False,
     }
     assert ["umount", str(tmp_path / "ffs-hccast")] in system.commands
+
+
+# --- Observable cleanup ---------------------------------------------------------
+
+
+def test_cleanup_report_lists_actions_and_verified_postconditions(
+    system: FakeSystem, configfs: Path, tmp_path: Path
+) -> None:
+    gadget = make_gadget(configfs, tmp_path)
+    start(gadget)
+
+    report = gadget.cleanup()
+
+    assert report.success is True
+    assert report.attempted_actions == (
+        "udc-unbind",
+        "link-remove",
+        "functionfs-unmount",
+        "mountpoint-remove",
+        "function-remove",
+        "configfs-remove",
+    )
+    assert report.errors == ()
+    assert report.verified_postconditions == (
+        "udc-released",
+        "functionfs-unmounted",
+        "mountpoint-removed",
+        "function-removed",
+        "gadget-removed",
+    )
+    assert report.failed_postconditions == ()
+    assert report.to_mapping()["success"] is True
+
+
+def test_cleanup_without_owned_resources_reports_nothing_to_verify(
+    system: FakeSystem, configfs: Path, tmp_path: Path
+) -> None:
+    report = make_gadget(configfs, tmp_path).cleanup()
+
+    assert report.success is True
+    assert report.attempted_actions == ()
+    assert report.verified_postconditions == ()
+
+
+def test_failed_unmount_is_reported_not_suppressed(
+    system: FakeSystem, configfs: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gadget = make_gadget(configfs, tmp_path)
+    start(gadget)
+
+    def refuse_umount(command: list[str]) -> None:
+        if command[0] == "umount":
+            raise GadgetError("umount: target is busy")
+        system.run(command)
+
+    monkeypatch.setattr(gadget_module, "_run", refuse_umount)
+
+    report = gadget.cleanup()
+
+    assert report.success is False
+    assert [(e.action, e.message) for e in report.errors] == [
+        ("functionfs-unmount", "umount: target is busy")
+    ]
+    assert "functionfs-unmounted" in report.failed_postconditions
+    assert "mountpoint-removed" in report.failed_postconditions
+    assert "udc-released" in report.verified_postconditions
+    assert gadget.owned_resources["functionfs_mount"] is True  # still ours to release
+
+
+def test_lingering_gadget_root_fails_the_gadget_removed_postcondition(
+    system: FakeSystem, configfs: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gadget = make_gadget(configfs, tmp_path)
+    start(gadget)
+
+    def refuse_root(path: Path) -> None:
+        if path == gadget.root:
+            raise OSError(16, "Device or resource busy")
+        system.rmdir(path)
+
+    monkeypatch.setattr(gadget_module, "_rmdir", refuse_root)
+
+    report = gadget.cleanup()
+
+    assert report.success is False
+    assert [e.action for e in report.errors] == ["configfs-remove"]
+    assert report.failed_postconditions == ("gadget-removed",)
+    assert gadget.root.is_dir()
+
+
+def test_stale_state_removal_verifies_owner_mount_and_gadget_postconditions(
+    system: FakeSystem, configfs: Path, tmp_path: Path
+) -> None:
+    stale = make_gadget(configfs, tmp_path)
+    start(stale)
+
+    report = ConfigFSGadget.force_cleanup(
+        name="hccast", function_name="hccast", mountpoint=tmp_path / "ffs-hccast", configfs_root=configfs
+    )
+
+    assert report.success is True
+    assert report.verified_postconditions == (
+        "udc-released",
+        "functionfs-unmounted",
+        "mountpoint-removed",
+        "function-removed",
+        "gadget-removed",
+    )
+    again = ConfigFSGadget.force_cleanup(
+        name="hccast", function_name="hccast", mountpoint=tmp_path / "ffs-hccast", configfs_root=configfs
+    )
+    assert again.success is True
+    assert again.attempted_actions == ("link-remove",)
+
+
+def _patch_cli_gadget(monkeypatch: pytest.MonkeyPatch, configfs: Path) -> None:
+    class TestGadget(ConfigFSGadget):
+        def __init__(self, **kwargs: object) -> None:
+            kwargs["configfs_root"] = configfs
+            super().__init__(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(cli, "ConfigFSGadget", TestGadget)
+
+
+def test_gadget_stop_exits_nonzero_with_a_structured_report_when_state_remains(
+    system: FakeSystem,
+    configfs: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    stale = make_gadget(configfs, tmp_path)
+    start(stale)
+    _patch_cli_gadget(monkeypatch, configfs)
+
+    def refuse_umount(command: list[str]) -> None:
+        if command[0] == "umount":
+            raise GadgetError("umount: target is busy")
+        system.run(command)
+
+    monkeypatch.setattr(gadget_module, "_run", refuse_umount)
+    arguments = ["gadget-stop", "--mountpoint", str(tmp_path / "ffs-hccast")]
+
+    assert cli.main(arguments) == cli.EXIT_CLEANUP_INCOMPLETE
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "gadget-stop cleanup incomplete" in captured.err
+    report = json.loads(captured.err.split("\n", 1)[1])
+    assert report["operation"] == "gadget-stop"
+    assert report["cleanup"]["success"] is False
+    assert report["cleanup"]["errors"] == [
+        {"action": "functionfs-unmount", "message": "umount: target is busy"}
+    ]
+    assert "functionfs-unmounted" in report["cleanup"]["failed_postconditions"]
+
+    monkeypatch.setattr(gadget_module, "_run", system.run)
+    assert cli.main(arguments) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["cleanup"]["success"] is True
+    assert report["cleanup"]["failed_postconditions"] == []
+
+
+@dataclass
+class _Info:
+    product: str = "HCT-AT01"
+    version: str = "2505161526"
+
+
+def _fake_session_stack(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeControl:
+        def __init__(self, mountpoint: object, *, receive_all_control: bool) -> None:
+            del mountpoint, receive_all_control
+
+        def open(self) -> None:
+            pass
+
+        def wait_for_enable(self, *, timeout_s: float) -> None:
+            del timeout_s
+
+        def close(self) -> None:
+            pass
+
+    class FakeTransport:
+        def __init__(self, mountpoint: object) -> None:
+            del mountpoint
+
+        def close(self) -> None:
+            pass
+
+    class FakeSession:
+        def __init__(self, transport: object) -> None:
+            del transport
+
+        def handshake(self, *, timeout_s: float) -> _Info:
+            del timeout_s
+            return _Info()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "FunctionFSControl", FakeControl)
+    monkeypatch.setattr(cli, "FunctionFSTransport", FakeTransport)
+    monkeypatch.setattr(cli, "HCCASTSession", FakeSession)
+
+
+def _gadget_args(tmp_path: Path) -> list[str]:
+    return [
+        "gadget-handshake",
+        "--aoa-mode",
+        "direct",
+        "--mountpoint",
+        str(tmp_path / "ffs-hccast"),
+        "--serial",
+        "TEST-003",
+    ]
+
+
+def test_completed_gadget_session_exits_nonzero_when_cleanup_is_incomplete(
+    system: FakeSystem,
+    configfs: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _patch_cli_gadget(monkeypatch, configfs)
+    _fake_session_stack(monkeypatch)
+
+    assert cli.main(_gadget_args(tmp_path)) == 0
+    assert "HCCAST handshake complete" in capsys.readouterr().out
+
+    def refuse_umount(command: list[str]) -> None:
+        if command[0] == "umount":
+            raise GadgetError("umount: target is busy")
+        system.run(command)
+
+    monkeypatch.setattr(gadget_module, "_run", refuse_umount)
+
+    assert cli.main(_gadget_args(tmp_path)) == cli.EXIT_CLEANUP_INCOMPLETE
+    captured = capsys.readouterr()
+    assert "HCCAST handshake complete" in captured.out
+    assert "gadget-handshake cleanup incomplete" in captured.err
+    report = json.loads(captured.err.split("\n", 1)[1])
+    assert report["cleanup"]["errors"][0]["action"] == "functionfs-unmount"
+    assert "functionfs-unmounted" in report["cleanup"]["failed_postconditions"]
+
+
+def test_failed_gadget_session_still_prints_its_cleanup_report(
+    system: FakeSystem,
+    configfs: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _patch_cli_gadget(monkeypatch, configfs)
+    _fake_session_stack(monkeypatch)
+
+    def failing_wait(self: object, *, timeout_s: float) -> None:
+        del self, timeout_s
+        raise TimeoutError("screen never enabled the function")
+
+    monkeypatch.setattr(cli.FunctionFSControl, "wait_for_enable", failing_wait)
+
+    def refuse_umount(command: list[str]) -> None:
+        if command[0] == "umount":
+            raise GadgetError("umount: target is busy")
+        system.run(command)
+
+    monkeypatch.setattr(gadget_module, "_run", refuse_umount)
+
+    assert cli.main(_gadget_args(tmp_path)) == 1
+    err = capsys.readouterr().err
+    assert "screen never enabled the function" in err
+    assert "gadget-handshake cleanup incomplete" in err
+    assert '"functionfs-unmount"' in err

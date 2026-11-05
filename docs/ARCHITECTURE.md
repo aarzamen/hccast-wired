@@ -229,6 +229,12 @@ Raspberry Pi cleanup will use the same principle but must define the expected
 stopped state for the selected Pi image instead of copying Jetson-specific
 service names.
 
+The raw CLI applies the same rule without the live supervisor. `gadget-stop`,
+`gadget-handshake` and `gadget-stream` release only the resources the
+invocation created or bound, print a structured cleanup report, and exit with
+status 4 when the UDC is still claimed, FunctionFS is still mounted or the
+gadget directory remains, instead of logging completion and returning 0.
+
 ## Platform roles
 
 ### Jetson Orin Nano
