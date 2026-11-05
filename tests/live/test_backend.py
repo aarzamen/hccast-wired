@@ -162,7 +162,7 @@ class MutableProbe:
 class RecordingLauncher:
     """Real local Popen launcher with mutable fake physical effects."""
 
-    def __init__(self, probe: MutableProbe, *, uid: int = 501, user: str = "ama") -> None:
+    def __init__(self, probe: MutableProbe, *, uid: int = 501, user: str = "alice") -> None:
         self.probe = probe
         self.uid = uid
         self.user = user

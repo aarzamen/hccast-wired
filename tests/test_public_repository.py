@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import re
 import shlex
+import subprocess
+import tarfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -343,3 +345,234 @@ def test_explicit_public_candidate_has_no_bare_pip_guidance() -> None:
     assert all((ROOT / path).is_file() for path in paths)
     offenders = [path for path in paths if prohibited.search(_read(path))]
     assert offenders == []
+
+
+# --- Publication manifest scan -------------------------------------------------
+#
+# The named-file policy tests above protect specific controls. The checks below
+# inspect the actual publication inventory (every Git-tracked file, including
+# the PanelBridge subtree and vendored archive member names) for personal
+# identifiers, credential signatures and credential- or patient-looking files.
+# Sensitive literals are assembled from fragments so this file never contains a
+# string that its own scan would flag. Offenders are reported by path, label and
+# line only; matched text is never echoed.
+
+VENDORED_ARCHIVE = "apps/panelbridge/vendor/gnome-network-displays-0.99.0.tar.gz"
+WALK_EXCLUDED_PARTS = frozenset({
+    ".git", ".venv", ".venv-smoke", "__pycache__", ".mypy_cache", ".ruff_cache",
+    ".pytest_cache", "dist", "build", "output", "evidence", "logs", "tmp",
+    ".superpowers", ".release", "node_modules",
+})
+BINARY_SUFFIXES = (
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".mp4", ".mov", ".pdf",
+    ".zip", ".gz", ".bin", ".der", ".apk",
+)
+
+
+def _joined(*fragments: str) -> str:
+    return "".join(fragments)
+
+
+CREDENTIAL_FILENAME = re.compile(
+    r"(?i)(?:"
+    r"\.(?:pem|key|p12|pfx|jks|keystore|ppk)$"
+    r"|(?:^|/)id_(?:rsa|dsa|ecdsa|ed25519)"
+    r"|(?:^|/)\.(?:env|netrc|npmrc|pypirc|htpasswd)(?:\.|$)"
+    r"|credential|secret|passw(?:or)?d|kubeconfig"
+    r"|(?:^|[^a-z])token(?:[^a-z]|$)"
+    r")"
+)
+PATIENT_FILENAME = re.compile(
+    r"(?i)(?:"
+    + _joined("pat", "ient")
+    + "|(?:^|[^a-z])" + _joined("p", "hi") + "(?:[^a-z]|$)"
+    + "|(?:^|[^a-z])" + _joined("m", "rn") + "(?:[^a-z]|$)"
+    + r"|\.(?:" + _joined("h", "l7") + "|" + _joined("d", "cm") + ")$"
+    + "|" + _joined("dic", "om")
+    + "|" + _joined("sick", "[-_ ]?call")
+    + "|(?:^|[^a-z])" + _joined("so", "ap") + "(?:[^a-z]|$)"
+    + "|" + _joined("ros", "ter")
+    + "|(?:^|[^a-z])" + _joined("d", "ob") + "(?:[^a-z]|$)"
+    + "|(?:^|[^a-z])" + _joined("s", "sn") + "(?:[^a-z]|$)"
+    + "|" + _joined("medi", "cal") + "|" + _joined("clin", "ic")
+    + r")"
+)
+TEXT_SIGNATURES = {
+    # Unix or macOS home directories name a person; template placeholders such
+    # as "/home/{user}" are not identifiers.
+    "personal-home-path": re.compile(r"(?<![\w/])/(?:Users|home)/(?![{$<])[A-Za-z0-9._-]+"),
+    "windows-home-path": re.compile(r"(?i)[a-z]:[\\/]+Users[\\/]+[^\s\"'<>\\/]+"),
+    "private-key-block": re.compile(
+        _joined("-----BEGIN ", r"(?:[A-Z0-9]+ )?", "PRIVATE", " KEY-----")
+    ),
+    "aws-access-key": re.compile(_joined(r"\b", "AK", "IA", r"[0-9A-Z]{16}\b")),
+    "github-token": re.compile(_joined(r"\bgh", "[pousr]", r"_[A-Za-z0-9]{30,}\b")),
+    "slack-token": re.compile(_joined(r"\bxo", "x[baprs]-", r"[A-Za-z0-9-]{10,}")),
+    "credential-assignment": re.compile(
+        r"(?i)\b(?:api[_-]?key|secret[_-]?key|passw(?:or)?d)\b\s*[:=]\s*[\"']?[^\s\"']{6,}"
+    ),
+    "mac-address": re.compile(
+        r"(?i)(?<![0-9a-f])(?:(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}|(?:[0-9a-f]{4}\.){2}[0-9a-f]{4})"
+        r"(?![0-9a-f])"
+    ),
+    "email-address": re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
+    "private-lan-address": re.compile(
+        r"\b(?:192\.168|10|172\.(?:1[6-9]|2[0-9]|3[01]))\.[0-9]{1,3}\.[0-9]{1,3}\b"
+    ),
+    "patient-record-field": re.compile(
+        r"(?i)\b(?:" + "|".join((
+            _joined("m", "rn"), _joined("s", "sn"), _joined("d", "ob"),
+            _joined("pat", "ient name"), _joined("date of ", "birth"), _joined("hip", "aa"),
+        )) + r")\b"
+    ),
+}
+# Exactly the reviewed synthetic namespaces, mirroring the PanelBridge source
+# bundle's export gate: local-unicast fixture addresses in tests and one
+# invalid-multicast rejection fixture. Nothing else is exempt.
+SYNTHETIC_MAC_PREFIX = "0200000000"
+MULTICAST_REJECTION_FIXTURE = ("apps/panelbridge/tests/test_rescue_service.py", "030000000001")
+# Documentation-reserved domains only; nothing that could route mail to a person.
+DOCUMENTATION_EMAIL_DOMAINS = re.compile(r"(?i)(?:^|\.)example\.(?:test|invalid|com|org|net)$|\.(?:test|invalid)$")
+# A receiver's own factory metadata URL, used as a parser fixture; it is a
+# device default, not a host binding.
+DEVICE_DEFAULT_ADDRESS_FIXTURES = {
+    "tests/test_protocol.py": {".".join(("192", "168", "203", "1"))},
+}
+
+
+def _publication_manifest() -> tuple[str, ...]:
+    """Return every tracked file, or a filtered tree walk when Git is unavailable."""
+
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(ROOT), "ls-files", "-z", "--cached"],
+            capture_output=True,
+            check=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return tuple(sorted(
+            path.relative_to(ROOT).as_posix()
+            for path in ROOT.rglob("*")
+            if path.is_file() and not (set(path.relative_to(ROOT).parts) & WALK_EXCLUDED_PARTS)
+        ))
+    return tuple(sorted(name for name in completed.stdout.decode("utf-8").split("\0") if name))
+
+
+def _publication_text(relative_path: str) -> str | None:
+    if relative_path.lower().endswith(BINARY_SUFFIXES):
+        return None
+    return (ROOT / relative_path).read_bytes().decode("utf-8")
+
+
+def _signature_allowed(label: str, relative_path: str, matched: str) -> bool:
+    if label == "mac-address":
+        compact = re.sub(r"[:.\-]", "", matched).lower()
+        in_tests = relative_path.startswith(("tests/", "apps/panelbridge/tests/"))
+        return (in_tests and compact.startswith(SYNTHETIC_MAC_PREFIX)) or (
+            (relative_path, compact) == MULTICAST_REJECTION_FIXTURE
+        )
+    if label == "email-address":
+        return DOCUMENTATION_EMAIL_DOMAINS.search(matched.rsplit("@", 1)[1]) is not None
+    if label == "private-lan-address":
+        return matched in DEVICE_DEFAULT_ADDRESS_FIXTURES.get(relative_path, set())
+    return False
+
+
+def test_publication_manifest_is_the_tracked_tree_and_includes_panelbridge() -> None:
+    manifest = _publication_manifest()
+
+    assert len(manifest) > 100
+    assert set(PUBLIC_CANDIDATE_TEXT_FILES) <= set(manifest)
+    assert {
+        "apps/panelbridge/README.md",
+        "apps/panelbridge/THIRD_PARTY_NOTICES.md",
+        "apps/panelbridge/packaging_tools/source_bundle.py",
+        "apps/panelbridge/packaging/installer-bootstrap.py",
+        "src/hccast_wired/live/checkpoint.py",
+        VENDORED_ARCHIVE,
+    } <= set(manifest)
+    assert all((ROOT / path).is_file() for path in manifest)
+    assert all(not Path(path).is_absolute() and ".." not in Path(path).parts for path in manifest)
+
+
+def test_publication_manifest_names_no_credential_or_patient_looking_files() -> None:
+    manifest = _publication_manifest()
+
+    offenders = [
+        path for path in manifest
+        if CREDENTIAL_FILENAME.search(path) or PATIENT_FILENAME.search(path)
+    ]
+    assert offenders == []
+
+    with tarfile.open(ROOT / VENDORED_ARCHIVE, "r:gz") as archive:
+        member_names = [member.name for member in archive.getmembers()]
+    assert member_names
+    assert [
+        name for name in member_names
+        if CREDENTIAL_FILENAME.search(name) or PATIENT_FILENAME.search(name)
+    ] == []
+
+
+def test_publication_manifest_text_is_utf8_without_hidden_binary() -> None:
+    offenders = []
+    for path in _publication_manifest():
+        if path.lower().endswith(BINARY_SUFFIXES):
+            continue
+        data = (ROOT / path).read_bytes()
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            offenders.append((path, "not-utf8"))
+        if b"\0" in data:
+            offenders.append((path, "nul-byte"))
+    assert offenders == []
+
+
+def test_publication_manifest_text_carries_no_identifiers_or_credential_signatures() -> None:
+    offenders = []
+    scanned = 0
+    for path in _publication_manifest():
+        text = _publication_text(path)
+        if text is None:
+            continue
+        scanned += 1
+        for label, pattern in TEXT_SIGNATURES.items():
+            for match in pattern.finditer(text):
+                if _signature_allowed(label, path, match.group()):
+                    continue
+                offenders.append((path, label, text.count("\n", 0, match.start()) + 1))
+    assert scanned > 100
+    assert offenders == []
+
+
+def test_publication_scan_signatures_detect_their_targets() -> None:
+    # The scan is only as good as its patterns; prove each one fires on a
+    # synthetic sample assembled here, never on a stored secret.
+    samples = {
+        "personal-home-path": "/" + "Users" + "/" + "someone" + "/Projects",
+        "windows-home-path": "C:" + "\\Users\\" + "someone",
+        "private-key-block": _joined("-----BEGIN ", "RSA ", "PRIVATE", " KEY-----"),
+        "aws-access-key": _joined("AK", "IA", "ABCDEFGHIJKLMNOP"),
+        "github-token": _joined("gh", "p", "_", "a" * 36),
+        "slack-token": _joined("xo", "x", "b", "-", "1234567890-abc"),
+        "credential-assignment": _joined("pass", "word", " = ", "hunter22"),
+        "mac-address": ":".join(("a4", "b1", "c2", "d3", "e4", "f5")),
+        "email-address": "someone" + "@" + "corp" + "-mail" + ".net",
+        "private-lan-address": ".".join(("192", "168", "1", "20")),
+        "patient-record-field": _joined("Pat", "ient Name: "),
+    }
+    for label, sample in samples.items():
+        assert TEXT_SIGNATURES[label].search(sample), label
+        assert not _signature_allowed(label, "docs/README.md", sample), label
+    assert _signature_allowed(
+        "email-address", "docs/README.md", "noreply" + "@" + "example" + ".invalid"
+    )
+    assert _signature_allowed("mac-address", "tests/test_x.py", ":".join(("02", "00", "00", "00", "00", "01")))
+    assert not _signature_allowed("mac-address", "src/x.py", ":".join(("02", "00", "00", "00", "00", "01")))
+    assert CREDENTIAL_FILENAME.search("deploy/id_" + "rsa")
+    assert CREDENTIAL_FILENAME.search("config/" + "secrets" + ".json")
+    assert PATIENT_FILENAME.search("notes/" + "pat" + "ient-list.csv")
+    assert PATIENT_FILENAME.search("records/scan." + "d" + "cm")
+    assert not PATIENT_FILENAME.search("apps/panelbridge/panelbridge/credits.py")
+    assert not CREDENTIAL_FILENAME.search("apps/panelbridge/packaging_tools/runtime_access.py")

@@ -3,6 +3,12 @@
 This module exposes only bounded operations approved by the post-Task-4
 checkpoint contracts.  It is not a persistent service or a general
 live-controller CLI.
+
+The account that owns the isolated desktop is deployment configuration.  It is
+supplied explicitly through ``--source-user`` (or the ``source_user`` keyword of
+the configuration builders), validated like every other ``LiveConfig`` field,
+and checked against the host's account database before any operation starts.
+Nothing in this module assumes a particular local account exists.
 """
 
 from __future__ import annotations
@@ -11,6 +17,7 @@ import argparse
 from collections.abc import Callable
 import json
 from pathlib import Path
+import pwd
 import signal
 import threading
 import time
@@ -54,8 +61,13 @@ class _Telemetry(Protocol):
     def close(self) -> TelemetryResult: ...
 
 
-def checkpoint_config() -> LiveConfig:
-    """Return the exact configuration frozen in the physical checkpoint plan."""
+def checkpoint_config(*, source_user: str) -> LiveConfig:
+    """Return the frozen physical checkpoint settings for one deployment account.
+
+    ``source_user`` is the existing local account that owns the isolated desktop
+    and its source processes.  ``LiveConfig`` validates the name; the caller is
+    responsible for confirming that the account exists on the target host.
+    """
 
     return LiveConfig(
         mode=DesiredMode.DESKTOP,
@@ -64,28 +76,61 @@ def checkpoint_config() -> LiveConfig:
         fps=10,
         bitrate_kbps=4000,
         display_number=99,
-        source_user="ama",
+        source_user=source_user,
         novnc_enabled=False,
     )
 
 
-def kiosk_checkpoint_config() -> LiveConfig:
+def kiosk_checkpoint_config(*, source_user: str) -> LiveConfig:
     """Return the exact local-Open-WebUI kiosk checkpoint configuration."""
 
-    return checkpoint_config().with_updates(
+    return checkpoint_config(source_user=source_user).with_updates(
         mode=DesiredMode.KIOSK,
         kiosk_url="http://127.0.0.1:3000",
     )
 
 
-def demo_soak_config(url: str) -> LiveConfig:
+def demo_soak_config(url: str, *, source_user: str) -> LiveConfig:
     """Return the approved 20-minute local demo checkpoint configuration."""
 
-    return checkpoint_config().with_updates(
+    return checkpoint_config(source_user=source_user).with_updates(
         mode=DesiredMode.KIOSK,
         kiosk_url=url,
         novnc_enabled=True,
     )
+
+
+def local_account_exists(name: str) -> bool:
+    """Report whether ``name`` is an account in this host's password database."""
+
+    try:
+        pwd.getpwnam(name)
+    except KeyError:
+        return False
+    return True
+
+
+def validated_source_user(
+    value: str,
+    *,
+    account_exists: Callable[[str], bool] = local_account_exists,
+) -> str:
+    """Return ``value`` once it is a valid, existing deployment account name.
+
+    Raises ``SystemExit`` with a plain explanation otherwise, so a stranger's
+    first run fails before any subprocess, UDC or evidence directory is touched.
+    """
+
+    try:
+        LiveConfig(source_user=value)
+    except ValueError as error:
+        raise SystemExit(f"--source-user is invalid: {error}") from None
+    if not account_exists(value):
+        raise SystemExit(
+            f"--source-user names no account on this host: {value!r}. "
+            "Supply an existing local account that owns the isolated desktop."
+        )
+    return value
 
 
 def _emit_json(event: dict[str, object]) -> None:
@@ -227,6 +272,7 @@ def run_demo_soak(
     *,
     server: _DemoServer,
     telemetry: _Telemetry,
+    source_user: str,
     streaming_seconds: float = 1200.0,
     total_deadline: float = 1380.0,
     shutdown_grace: float = 20.0,
@@ -240,7 +286,7 @@ def run_demo_soak(
         server.start()
         result = run_once(
             factory,
-            demo_soak_config(server.url),
+            demo_soak_config(server.url, source_user=source_user),
             streaming_seconds=streaming_seconds,
             total_deadline=total_deadline,
             shutdown_grace=shutdown_grace,
@@ -291,6 +337,14 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
         help="absolute path to the installed hccast-wired executable",
     )
+    parser.add_argument(
+        "--source-user",
+        required=True,
+        help=(
+            "existing local account that owns the isolated desktop and source "
+            "processes; deployment configuration, never assumed"
+        ),
+    )
     return parser
 
 
@@ -312,12 +366,17 @@ def _connect_event(operation: str) -> dict[str, object]:
     }
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    *,
+    account_exists: Callable[[str], bool] = local_account_exists,
+) -> int:
     args = _parser().parse_args(argv)
     if not Path(args.evidence_root).is_absolute():
         raise SystemExit("--evidence-root must be absolute")
     if not Path(args.hccast_executable).is_absolute():
         raise SystemExit("--hccast-executable must be absolute")
+    source_user = validated_source_user(args.source_user, account_exists=account_exists)
 
     factory = _factory(args)
     if args.operation in {"reconcile-only", "verify-stopped"}:
@@ -348,6 +407,7 @@ def main(argv: list[str] | None = None) -> int:
                 factory,
                 server=server,
                 telemetry=telemetry,
+                source_user=source_user,
                 streaming_seconds=streaming_seconds,
                 total_deadline=total_deadline,
                 shutdown_grace=shutdown_grace,
@@ -372,9 +432,9 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     else:
         config = (
-            kiosk_checkpoint_config()
+            kiosk_checkpoint_config(source_user=source_user)
             if args.operation == "run-kiosk-once"
-            else checkpoint_config()
+            else checkpoint_config(source_user=source_user)
         )
         result = run_once(
             factory,
