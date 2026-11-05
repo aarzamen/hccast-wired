@@ -35,6 +35,13 @@ this version since the undated legacy entries further down.
   postconditions (UDC released, FunctionFS unmounted, mount point and gadget
   removed); `gadget-stop`, `gadget-handshake` and `gadget-stream` print it and
   exit 4 when anything remains instead of logging completion and returning 0.
+- Make the H.264 framing contract explicit and enforce it: one `VID` packet
+  is one access unit. Without access unit delimiters, pictures are now
+  grouped at slices whose `first_mb_in_slice` is zero and at the prefix NAL
+  units before them, so undelimited streams are paced per frame instead of
+  per NAL unit; a slice too short for a slice header is rejected. The sample
+  encoder keeps emitting delimiters; arbitrary slice order remains
+  unsupported and is documented.
 - Track every ConfigFS resource a `gadget-handshake`/`gadget-stream` run
   creates or binds, and release only those on exit. A second start that is
   rejected because the gadget already exists no longer unbinds or removes the
