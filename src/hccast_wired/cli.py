@@ -23,7 +23,7 @@ from .gadget import (
 )
 from .host_usb import HostUSBTransport, enumerate_candidates
 from .protocol import ScreenInfo, Settings
-from .session import HCCASTSession
+from .session import HCCASTSession, validate_stream_file, validate_stream_limits
 from .setr_probe import SetrOnceClassification, run_setr_once
 
 LOG = logging.getLogger(__name__)
@@ -59,6 +59,44 @@ def _bounded_response_timeout_ms(value: str) -> int:
             "--response-timeout-ms must be between 1 and 500 milliseconds"
         )
     return timeout_ms
+
+
+def _positive_finite_fps(value: str) -> float:
+    try:
+        fps = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("--fps must be a number") from exc
+    if not math.isfinite(fps) or fps <= 0:
+        raise argparse.ArgumentTypeError("--fps must be a positive finite number")
+    return fps
+
+
+def _positive_max_packets(value: str) -> int:
+    try:
+        count = int(value, 10)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("--max-packets must be an integer") from exc
+    if count < 1:
+        raise argparse.ArgumentTypeError(
+            "--max-packets must be at least 1; 0 or a negative limit would send nothing"
+        )
+    return count
+
+
+def validate_stream_arguments(args: argparse.Namespace) -> None:
+    """Reject stream input the session could not use, before any USB setup.
+
+    Called by every streaming command ahead of opening a host transport or
+    creating a gadget, so a missing file, an unreadable file, ``--loop`` with
+    stdin, or an impossible limit costs no handshake and no transfer.
+    """
+
+    validate_stream_limits(args.fps, args.max_packets)
+    if args.file == "-":
+        if args.loop:
+            raise ValueError("--loop cannot be used with stdin")
+        return
+    validate_stream_file(args.file)
 
 
 def _configure_logging(verbose: int) -> None:
@@ -170,6 +208,7 @@ def command_host_handshake(args: argparse.Namespace) -> int:
 
 
 def command_host_stream(args: argparse.Namespace) -> int:
+    validate_stream_arguments(args)
     transport = HostUSBTransport(
         vendor_id=args.vendor_id,
         product_id=args.product_id,
@@ -252,6 +291,8 @@ def _print_aoa_identity(identity: AOAIdentity) -> None:
 
 
 def _run_gadget(args: argparse.Namespace, *, stream: bool) -> int:
+    if stream:
+        validate_stream_arguments(args)
     gadget = ConfigFSGadget(
         name=args.gadget_name,
         function_name=args.function_name,
@@ -391,10 +432,19 @@ def add_common_session_options(parser: argparse.ArgumentParser) -> None:
 
 def add_stream_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("file", help="Annex-B H.264 file, or - for stdin")
-    parser.add_argument("--fps", type=float, default=30.0)
+    parser.add_argument(
+        "--fps",
+        type=_positive_finite_fps,
+        default=30.0,
+        help="pacing rate in packets per second; must be positive and finite (default: 30)",
+    )
     parser.add_argument("--packetization", choices=("access-unit", "nal"), default="access-unit")
-    parser.add_argument("--loop", action="store_true")
-    parser.add_argument("--max-packets", type=int)
+    parser.add_argument("--loop", action="store_true", help="repeat the file; not valid with stdin")
+    parser.add_argument(
+        "--max-packets",
+        type=_positive_max_packets,
+        help="stop after exactly this many packets; must be at least 1",
+    )
 
 
 def add_host_discovery_options(parser: argparse.ArgumentParser) -> None:

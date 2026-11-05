@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import math
+import os
 import threading
 import time
 from dataclasses import dataclass
@@ -31,6 +33,36 @@ LOG = logging.getLogger(__name__)
 
 class SessionError(RuntimeError):
     pass
+
+
+def validate_stream_limits(fps: float, max_packets: int | None) -> None:
+    """Reject pacing and packet limits that cannot describe a real stream.
+
+    Raised before any packet is written so a bad limit never costs a transfer:
+    ``fps`` must be a positive finite number and ``max_packets``, when given,
+    must allow at least one packet.
+    """
+
+    if isinstance(fps, bool) or not isinstance(fps, (int, float)):
+        raise ValueError("fps must be a positive finite number")
+    if not math.isfinite(fps) or fps <= 0:
+        raise ValueError("fps must be a positive finite number")
+    if max_packets is not None:
+        if isinstance(max_packets, bool) or not isinstance(max_packets, int):
+            raise ValueError("max_packets must be a positive integer or None")
+        if max_packets < 1:
+            raise ValueError("max_packets must be at least 1; 0 or less would send nothing")
+
+
+def validate_stream_file(path: str | Path) -> Path:
+    """Return ``path`` once it is an existing, readable regular file."""
+
+    resolved = Path(path)
+    if not resolved.is_file():
+        raise ValueError(f"H.264 input is not an existing regular file: {resolved}")
+    if not os.access(resolved, os.R_OK):
+        raise ValueError(f"H.264 input is not readable: {resolved}")
+    return resolved
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,8 +216,7 @@ class HCCASTSession:
         fps: float,
         max_packets: int | None,
     ) -> StreamStats:
-        if fps <= 0:
-            raise ValueError("fps must be positive")
+        validate_stream_limits(fps, max_packets)
         frame_period = 1.0 / fps
         started = time.monotonic()
         next_deadline = started
@@ -194,6 +225,10 @@ class HCCASTSession:
         wire_bytes = 0
 
         for packet in packets_iter:  # type: ignore[union-attr]
+            # The limit is checked before each write, so a limit of N sends
+            # exactly N packets and never one more.
+            if max_packets is not None and packets >= max_packets:
+                break
             self.send_video_packet(packet)
             packets += 1
             payload_bytes += len(packet)
@@ -230,6 +265,8 @@ class HCCASTSession:
         loop: bool = False,
         max_packets: int | None = None,
     ) -> StreamStats:
+        validate_stream_limits(fps, max_packets)
+        path = validate_stream_file(path)
         total_packets = 0
         total_payload = 0
         total_wire = 0
@@ -256,6 +293,7 @@ class HCCASTSession:
         packetization: str = "access-unit",
         max_packets: int | None = None,
     ) -> StreamStats:
+        validate_stream_limits(fps, max_packets)
         return self._stream_packets(
             iter_h264_packets_from_stream(stream, packetization=packetization),
             fps=fps,

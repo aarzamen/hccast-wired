@@ -25,6 +25,11 @@ this version since the undated legacy entries further down.
 - Expose the installed driver version through `hccast-wired --version`, make
   `hccast_wired.__version__` the single version source, and log the version at
   the start of every command so diagnostic runs record it.
+- Validate stream input before any USB setup: `--fps` must be positive and
+  finite, `--max-packets` at least 1, the input file must exist and be
+  readable, and `--loop` is refused with stdin, all before a host transport is
+  opened or a gadget is created. The session API applies the same limits and
+  a packet limit now sends exactly that many packets.
 - Track every ConfigFS resource a `gadget-handshake`/`gadget-stream` run
   creates or binds, and release only those on exit. A second start that is
   rejected because the gadget already exists no longer unbinds or removes the

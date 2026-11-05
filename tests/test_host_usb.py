@@ -4,6 +4,7 @@ import builtins
 import struct
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -531,11 +532,18 @@ def test_invalid_wait_configuration_is_rejected_before_loading_usb(
 )
 def test_cli_passes_wait_and_claim_options_to_host_transport(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
     command: str,
     extra_args: list[str],
     stream: bool,
 ) -> None:
     captured: dict[str, Any] = {}
+    # Stream input is validated before the transport opens, so the sample
+    # must be a real readable file even though the transport is a fake.
+    if extra_args:
+        sample = tmp_path / extra_args[0]
+        sample.write_bytes(b"\x00\x00\x00\x01\x09\xf0\x00\x00\x00\x01\x65abc")
+        extra_args = [str(sample)]
 
     class _Transport:
         def __init__(self, **kwargs: Any) -> None:
