@@ -12,6 +12,7 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
+from . import __version__
 from .functionfs import AOAIdentity, FunctionFSControl, FunctionFSTransport
 from .gadget import (
     AOA_ACCESSORY_PID,
@@ -450,6 +451,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="Experimental wired driver for DrongScreen/HCCAST selfie monitors",
     )
     parser.add_argument("-v", "--verbose", action="count", default=0)
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help=(
+            "print the installed driver version and exit; receiver firmware is "
+            "reported by the screen's SETV reply, PanelBridge is versioned separately"
+        ),
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     probe = sub.add_parser(
@@ -547,6 +557,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     _configure_logging(args.verbose)
+    # Every diagnostic run records the driver version it was produced with.
+    LOG.info("hccast-wired %s running %s", __version__, args.command)
     try:
         return int(args.func(args))
     except KeyboardInterrupt:

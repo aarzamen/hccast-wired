@@ -286,7 +286,12 @@ def test_public_metadata_credits_the_author_and_preserves_supported_versions() -
     pyproject = _read("pyproject.toml")
     license_text = _read("LICENSE")
 
-    assert 'version = "0.2.0"' in pyproject
+    # One version source: pyproject reads hccast_wired.__version__ at build time.
+    assert 'dynamic = ["version"]' in pyproject
+    assert 'version = {attr = "hccast_wired.__version__"}' in pyproject
+    assert re.search(r'^version = "', pyproject, re.MULTILINE) is None
+    package_init = _read("src/hccast_wired/__init__.py")
+    assert re.search(r'^__version__ = "[0-9]+\.[0-9]+\.[0-9]+"$', package_init, re.MULTILINE)
     assert 'requires-python = ">=3.10"' in pyproject
     assert 'python_version = "3.10"' in pyproject
     assert "Aaron Arzamendi" in pyproject
