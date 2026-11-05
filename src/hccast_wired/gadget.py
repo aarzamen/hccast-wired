@@ -52,6 +52,12 @@ def _write(path: Path, value: str) -> None:
         raise GadgetError(f"cannot write {path}: {exc}") from exc
 
 
+def _rmdir(path: Path) -> None:
+    """Remove one configfs node; its attribute files disappear with it."""
+
+    path.rmdir()
+
+
 def _remove_if_exists(path: Path) -> None:
     try:
         if path.is_symlink() or path.is_file():
@@ -83,9 +89,30 @@ class ConfigFSGadget:
         self.config = self.root / "configs" / "c.1"
         self.function = self.root / "functions" / f"ffs.{function_name}"
         self.link = self.config / f"ffs.{function_name}"
+        # Ownership of every resource this invocation creates. cleanup() releases
+        # only what is recorded here, so a rejected start can never unbind or
+        # remove a gadget that belongs to another session. Stale state is removed
+        # explicitly through force_cleanup() instead.
+        self._created_root = False
+        self._created_function = False
+        self._created_mountpoint = False
         self._mounted_ffs = False
+        self._linked = False
         self._bound = False
         self._udc_name: str | None = None
+
+    @property
+    def owned_resources(self) -> dict[str, bool]:
+        """Report which resources this invocation currently owns."""
+
+        return {
+            "root": self._created_root,
+            "function": self._created_function,
+            "mountpoint": self._created_mountpoint,
+            "functionfs_mount": self._mounted_ffs,
+            "link": self._linked,
+            "udc_binding": self._bound,
+        }
 
     def require_root(self) -> None:
         if os.geteuid() != 0:
@@ -170,6 +197,7 @@ class ConfigFSGadget:
             )
 
         self.root.mkdir()
+        self._created_root = True
         _write(self.root / "idVendor", f"0x{vendor_id:04x}")
         _write(self.root / "idProduct", f"0x{product_id:04x}")
         _write(self.root / "bcdUSB", "0x0200")
@@ -191,6 +219,7 @@ class ConfigFSGadget:
         _write(self.config / "bmAttributes", "0x80")
 
         self.function.mkdir(parents=True)
+        self._created_function = True
         LOG.info(
             "created gadget %s as %04x:%04x",
             self.root,
@@ -199,7 +228,9 @@ class ConfigFSGadget:
         )
 
     def mount_functionfs(self) -> None:
-        self.mountpoint.mkdir(parents=True, exist_ok=True)
+        if not self.mountpoint.exists():
+            self.mountpoint.mkdir(parents=True)
+            self._created_mountpoint = True
         if _is_mounted(self.mountpoint, "functionfs"):
             return
         _run(["mount", "-t", "functionfs", self.function_name, str(self.mountpoint)])
@@ -213,6 +244,7 @@ class ConfigFSGadget:
             self.link.symlink_to(self.function)
         except OSError as exc:
             raise GadgetError(f"cannot link FunctionFS function into config: {exc}") from exc
+        self._linked = True
 
     def bind(self) -> None:
         if self._bound:
@@ -223,12 +255,15 @@ class ConfigFSGadget:
         LOG.info("bound gadget to UDC %s", self._udc_name)
 
     def unbind(self) -> None:
-        if not self.root.exists():
+        """Release a UDC binding made by this invocation; foreign bindings are untouched."""
+
+        if not self._bound:
             return
-        try:
-            _write(self.root / "UDC", "")
-        except GadgetError as exc:
-            LOG.debug("UDC unbind ignored: %s", exc)
+        if self.root.exists():
+            try:
+                _write(self.root / "UDC", "")
+            except GadgetError as exc:
+                LOG.debug("UDC unbind ignored: %s", exc)
         self._bound = False
 
     def set_identity(
@@ -261,26 +296,12 @@ class ConfigFSGadget:
         self.bind()
         LOG.info("re-enumerated as Android Open Accessory 18d1:2d00")
 
-    def cleanup(self) -> None:
-        self.unbind()
-        time.sleep(0.05)
-        _remove_if_exists(self.link)
+    def _configfs_nodes(self) -> list[Path]:
+        """ConfigFS nodes of this gadget in leaf-to-root removal order."""
 
-        # FunctionFS must be unmounted after all ep files are closed.
-        if _is_mounted(self.mountpoint, "functionfs"):
-            try:
-                _run(["umount", str(self.mountpoint)])
-            except GadgetError as exc:
-                LOG.warning("FunctionFS unmount failed: %s", exc)
-        try:
-            self.mountpoint.rmdir()
-        except OSError:
-            pass
-
-        # Remove configfs nodes in leaf-to-root order.
-        paths = [
-            self.function,
+        return [
             self.config / "strings" / "0x409",
+            self.config / "strings",
             self.config,
             self.root / "configs",
             self.root / "functions",
@@ -288,14 +309,96 @@ class ConfigFSGadget:
             self.root / "strings",
             self.root,
         ]
-        for path in paths:
+
+    def cleanup(self) -> None:
+        """Release only the resources this invocation created or bound.
+
+        A gadget, mount, link or UDC binding that already existed before this
+        invocation is left exactly as it was. Removing such stale or foreign
+        state is a separate explicit operation: ``force_cleanup``.
+        """
+
+        if self._bound:
+            self.unbind()
+            time.sleep(0.05)
+        if self._linked:
+            _remove_if_exists(self.link)
+            self._linked = False
+
+        # FunctionFS must be unmounted after all ep files are closed.
+        if self._mounted_ffs:
+            if _is_mounted(self.mountpoint, "functionfs"):
+                try:
+                    _run(["umount", str(self.mountpoint)])
+                    self._mounted_ffs = False
+                except GadgetError as exc:
+                    LOG.warning("FunctionFS unmount failed: %s", exc)
+            else:
+                self._mounted_ffs = False
+        if self._created_mountpoint:
             try:
-                path.rmdir()
+                self.mountpoint.rmdir()
+                self._created_mountpoint = False
+            except OSError as exc:
+                LOG.debug("could not remove %s: %s", self.mountpoint, exc)
+
+        if self._created_function:
+            try:
+                _rmdir(self.function)
+                self._created_function = False
+            except FileNotFoundError:
+                self._created_function = False
+            except OSError as exc:
+                LOG.debug("could not remove %s: %s", self.function, exc)
+        if self._created_root:
+            for path in self._configfs_nodes():
+                try:
+                    _rmdir(path)
+                except FileNotFoundError:
+                    pass
+                except OSError as exc:
+                    LOG.debug("could not remove %s: %s", path, exc)
+            if not self.root.exists():
+                self._created_root = False
+        LOG.info("gadget cleanup complete")
+
+    def remove_stale_state(self) -> None:
+        """Explicitly unbind and remove this gadget's state regardless of ownership.
+
+        This is the ``gadget-stop`` operation. It is never run implicitly by a
+        failed start; an operator asks for it after confirming no other session
+        still needs the gadget.
+        """
+
+        if self.root.exists():
+            try:
+                _write(self.root / "UDC", "")
+            except GadgetError as exc:
+                LOG.debug("UDC unbind ignored: %s", exc)
+        self._bound = False
+        time.sleep(0.05)
+        _remove_if_exists(self.link)
+        self._linked = False
+        if _is_mounted(self.mountpoint, "functionfs"):
+            try:
+                _run(["umount", str(self.mountpoint)])
+            except GadgetError as exc:
+                LOG.warning("FunctionFS unmount failed: %s", exc)
+        self._mounted_ffs = False
+        try:
+            self.mountpoint.rmdir()
+        except OSError:
+            pass
+        self._created_mountpoint = False
+        for path in [self.function, *self._configfs_nodes()]:
+            try:
+                _rmdir(path)
             except FileNotFoundError:
                 pass
             except OSError as exc:
                 LOG.debug("could not remove %s: %s", path, exc)
-        LOG.info("gadget cleanup complete")
+        self._created_function = self._created_root = False
+        LOG.info("stale gadget state removal complete")
 
     @classmethod
     def force_cleanup(
@@ -304,6 +407,12 @@ class ConfigFSGadget:
         name: str = "hccast",
         function_name: str = "hccast",
         mountpoint: str | Path = "/dev/ffs-hccast",
+        configfs_root: str | Path = "/sys/kernel/config/usb_gadget",
     ) -> None:
-        gadget = cls(name=name, function_name=function_name, mountpoint=mountpoint)
-        gadget.cleanup()
+        gadget = cls(
+            name=name,
+            function_name=function_name,
+            mountpoint=mountpoint,
+            configfs_root=configfs_root,
+        )
+        gadget.remove_stale_state()

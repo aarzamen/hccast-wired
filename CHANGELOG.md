@@ -2,6 +2,11 @@
 
 ## Unreleased — Pi 500 demonstration and documentation, 2026-10-28
 
+- Track every ConfigFS resource a `gadget-handshake`/`gadget-stream` run
+  creates or binds, and release only those on exit. A second start that is
+  rejected because the gadget already exists no longer unbinds or removes the
+  first session's gadget; explicit stale-state removal stays with
+  `gadget-stop`, with a regression test against a fake configfs tree.
 - Add `apps/panelbridge/packaging_tools/release.py`, which chains the source
   bundle, ARM64 package and installer builders, refuses a worker with
   development paths or debug records, cross-checks the artifacts and records
