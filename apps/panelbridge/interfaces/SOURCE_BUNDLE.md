@@ -13,6 +13,8 @@ tests, interfaces, packaging scripts/service/policy files, all four native
 patches, the build recipe, every current native C/header file, original SVG,
 rendered PNG icons, app license and notices. Every allowlisted file is required.
 The new rescue service module, launcher, unit and tests are included.
+The release orchestrator `packaging_tools/release.py` runs this builder first
+and is described in [RELEASE.md](RELEASE.md).
 
 The allowlist is exact, not an extension-based or recursive export rule. A new
 application, installation, removal or build input requires an explicit allowlist

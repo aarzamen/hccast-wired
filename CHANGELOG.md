@@ -1,6 +1,60 @@
 # Changelog
 
-## Unreleased — Pi 500 demonstration and documentation, 2026-10-28
+Three different version numbers appear in this repository and are never the
+same thing:
+
+- **Driver** — the legacy MIT `hccast-wired` package built from the root. Its
+  single source is `__version__` in `src/hccast_wired/__init__.py`, read by
+  `pyproject.toml` at build time and printed by `hccast-wired --version`.
+- **Receiver firmware** — reported by each screen in its SETV reply, for
+  example `HCT-AT01` / `2505161526` on the RK-X40F-family unit and `HC15B100` /
+  `2511261024` on the Qshot V2 non-Pro. The driver neither sets nor ships it.
+- **PanelBridge** — the optional GPL-3.0-or-later application under
+  `apps/panelbridge`, versioned separately as `0.1.0~dev4` in
+  `packaging_tools/build_package.py` (`0.1.0.dev4` in `panelbridge/__init__.py`)
+  and delivered only through its own ARM64 install set, never the root wheel.
+
+## 0.2.0 — 2026-11-05 (driver)
+
+This dates the driver version that package metadata and `hccast-wired --version`
+report as of this entry; it describes the source as it stands and creates no
+Git tag, package upload or installer release, each of which needs its own
+publication assignment. The subsections below are the work accumulated under
+this version since the undated legacy entries further down.
+
+- Expose the installed driver version through `hccast-wired --version`, make
+  `hccast_wired.__version__` the single version source, and log the version at
+  the start of every command so diagnostic runs record it.
+- Validate stream input before any USB setup: `--fps` must be positive and
+  finite, `--max-packets` at least 1, the input file must exist and be
+  readable, and `--loop` is refused with stdin, all before a host transport is
+  opened or a gadget is created. The session API applies the same limits and
+  a packet limit now sends exactly that many packets.
+- Make failed gadget cleanup observable to direct CLI users. Cleanup returns
+  a structured report of attempted actions, failures and verified or failed
+  postconditions (UDC released, FunctionFS unmounted, mount point and gadget
+  removed); `gadget-stop`, `gadget-handshake` and `gadget-stream` print it and
+  exit 4 when anything remains instead of logging completion and returning 0.
+- Make the H.264 framing contract explicit and enforce it: one `VID` packet
+  is one access unit. Without access unit delimiters, pictures are now
+  grouped at slices whose `first_mb_in_slice` is zero and at the prefix NAL
+  units before them, so undelimited streams are paced per frame instead of
+  per NAL unit; a slice too short for a slice header is rejected. The sample
+  encoder keeps emitting delimiters; arbitrary slice order remains
+  unsupported and is documented.
+- Track every ConfigFS resource a `gadget-handshake`/`gadget-stream` run
+  creates or binds, and release only those on exit. A second start that is
+  rejected because the gadget already exists no longer unbinds or removes the
+  first session's gadget; explicit stale-state removal stays with
+  `gadget-stop`, with a regression test against a fake configfs tree.
+- Add `apps/panelbridge/packaging_tools/release.py`, which chains the source
+  bundle, ARM64 package and installer builders, refuses a worker with
+  development paths or debug records, cross-checks the artifacts and records
+  them in `RELEASE_MANIFEST.json` with `release_ready: false`. CI runs its
+  platform-independent source-only stage. No installer release is created;
+  the legacy wheel still delivers only the MIT driver.
+
+### Pi 500 demonstration and documentation, 2026-10-28
 
 - Accept Raspberry Pi 500 in the experimental PanelBridge installer and advance
   the development package to dev4, preserving unrelated residual package state.
@@ -14,7 +68,7 @@
 - Keep the initial freeze and later teardown timeout open. No installer release,
   automatic-start acceptance, audio or sustained reliability is claimed.
 
-## Unreleased — PanelBridge development snapshot
+### PanelBridge development snapshot
 
 - Add the experimental Pi 5 normal-desktop controller, GTK controls, scoped
   network helper, rescue renderer, packaging and restoration tools.
@@ -33,7 +87,7 @@
 - Publish passive-capture sample counts atomically so interrupted cleanup does
   not erase evidence of completed samples.
 
-## Unreleased — Fable handoff and platform reproduction
+### Fable handoff and platform reproduction
 
 - Reconciled the public handoff around the hardware-verified Jetson direct
   `18d1:2d00` HCCAST path.
@@ -45,7 +99,11 @@
 - Expanded Claude Code orientation while retaining `AGENTS.md` as the
   authoritative collaboration and safety contract.
 
-## v0.2 — WhatCable instrumentation
+## Legacy entries (undated)
+
+These earlier entries were recorded without dates and are kept as written.
+
+### v0.2 — WhatCable instrumentation
 
 - Added `docs/WHATCABLE.md` with cost, capabilities, limitations, and
   topology-specific interpretation.
@@ -55,7 +113,7 @@
 - Clarified that USB-A forces host role but also terminates downstream USB-C
   CC/PD/e-marker visibility.
 
-## v0.1 — Initial experimental driver
+### v0.1 — Initial experimental driver
 
 - Dual direct-host and Linux gadget/AOA implementations.
 - HCCAST framing, handshake, Annex-B H.264, tests, and platform scripts.

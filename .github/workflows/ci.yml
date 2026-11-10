@@ -94,3 +94,25 @@ jobs:
           uv pip install --python .venv-smoke/bin/python dist/*.whl
           .venv-smoke/bin/python -c "import hccast_wired"
           .venv-smoke/bin/hccast-wired --help
+
+  panelbridge-source:
+    name: PanelBridge source-bundle release stage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Build and inspect the PanelBridge source bundle
+        # Platform-independent stage only: no worker, package or installer is
+        # built here, and nothing in this job establishes Pi 500 acceptance.
+        run: |
+          python3 -I apps/panelbridge/packaging_tools/release.py --project-root "$PWD" --output-dir output/release
+          python3 - <<'PY'
+          import json
+          manifest = json.load(open("output/release/RELEASE_MANIFEST.json"))
+          print(json.dumps({"stage": manifest["stage"], "claims": manifest["claims"]}, indent=2))
+          assert manifest["stage"] == "source_bundle" and manifest["claims"]["release_ready"] is False
+          PY

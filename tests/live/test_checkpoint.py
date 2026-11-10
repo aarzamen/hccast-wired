@@ -15,9 +15,13 @@ from hccast_wired.live.checkpoint import (
     cleanup_to_mapping,
     demo_soak_config,
     kiosk_checkpoint_config,
+    local_account_exists,
+    main,
     run_demo_soak,
     run_once,
+    validated_source_user,
 )
+from hccast_wired.live import checkpoint as checkpoint_module
 from hccast_wired.live.model import DesiredMode, RuntimePhase
 from hccast_wired.live.model import LiveConfig
 from hccast_wired.live.supervisor import (
@@ -29,6 +33,10 @@ from hccast_wired.live.supervisor import (
 )
 from hccast_wired.live.telemetry import TelemetryResult
 
+
+# A neutral deployment account for these contract tests; nothing in the runner
+# assumes any particular local account exists.
+ACCOUNT = "alice"
 
 SUCCESS = CleanupResult(
     attempted_actions=("gadget-cleanup", "stock-gadget-start"),
@@ -119,31 +127,31 @@ class FakeTelemetry:
 
 
 def test_checkpoint_config_freezes_the_approved_physical_settings() -> None:
-    config = checkpoint_config()
+    config = checkpoint_config(source_user=ACCOUNT)
 
     assert config.mode is DesiredMode.DESKTOP
     assert (config.width, config.height) == (640, 1136)
     assert config.fps == 10
     assert config.bitrate_kbps == 4000
     assert config.display_number == 99
-    assert config.source_user == "ama"
+    assert config.source_user == ACCOUNT
     assert config.novnc_enabled is False
 
 
 def test_kiosk_checkpoint_config_targets_only_the_existing_local_open_webui() -> None:
-    config = kiosk_checkpoint_config()
+    config = kiosk_checkpoint_config(source_user=ACCOUNT)
 
     assert config.mode is DesiredMode.KIOSK
     assert config.kiosk_url == "http://127.0.0.1:3000"
     assert (config.width, config.height) == (640, 1136)
     assert config.fps == 10
     assert config.bitrate_kbps == 4000
-    assert config.source_user == "ama"
+    assert config.source_user == ACCOUNT
     assert config.novnc_enabled is False
 
 
 def test_demo_soak_config_freezes_approved_policy() -> None:
-    config = demo_soak_config("http://127.0.0.1:8877/")
+    config = demo_soak_config("http://127.0.0.1:8877/", source_user=ACCOUNT)
 
     assert config.mode is DesiredMode.KIOSK
     assert config.kiosk_url == "http://127.0.0.1:8877/"
@@ -152,7 +160,7 @@ def test_demo_soak_config_freezes_approved_policy() -> None:
     assert config.fps == 10
     assert config.bitrate_kbps == 4000
     assert config.display_number == 99
-    assert config.source_user == "ama"
+    assert config.source_user == ACCOUNT
 
 
 def test_cleanup_mapping_preserves_every_action_error_and_postcondition() -> None:
@@ -178,7 +186,7 @@ def test_run_once_interrupts_twenty_second_policy_after_streaming_and_stops_once
 
     result = run_once(
         factory,
-        checkpoint_config(),
+        checkpoint_config(source_user=ACCOUNT),
         streaming_seconds=0.02,
         total_deadline=1.0,
         shutdown_grace=0.5,
@@ -188,7 +196,7 @@ def test_run_once_interrupts_twenty_second_policy_after_streaming_and_stops_once
     assert attempt.interrupted_seen.wait(0.2)
     assert attempt.run_calls == 1
     assert attempt.stop_calls == 1
-    assert factory.configs == [checkpoint_config()]
+    assert factory.configs == [checkpoint_config(source_user=ACCOUNT)]
     assert result["terminal_reason"] == "streaming-window-complete"
     assert result["streaming_observed"] is True
     assert result["product"] == "HCT-AT01"
@@ -208,7 +216,7 @@ def test_run_once_total_deadline_interrupts_an_attempt_that_never_streams() -> N
 
     result = run_once(
         factory,
-        checkpoint_config(),
+        checkpoint_config(source_user=ACCOUNT),
         streaming_seconds=0.5,
         total_deadline=0.03,
         shutdown_grace=0.5,
@@ -228,7 +236,7 @@ def test_run_once_interrupts_immediately_when_health_fails() -> None:
 
     result = run_once(
         FakeFactory(attempt),
-        checkpoint_config(),
+        checkpoint_config(source_user=ACCOUNT),
         streaming_seconds=1.0,
         total_deadline=2.0,
         shutdown_grace=0.5,
@@ -259,7 +267,7 @@ def test_run_once_reports_early_attempt_failure_without_waiting_for_deadline() -
 
     result = run_once(
         factory,
-        checkpoint_config(),
+        checkpoint_config(source_user=ACCOUNT),
         streaming_seconds=1.0,
         total_deadline=1.0,
         shutdown_grace=0.5,
@@ -282,6 +290,7 @@ def test_demo_soak_uses_short_durations_and_closes_auxiliary_work() -> None:
         factory,
         server=server,
         telemetry=telemetry,
+        source_user=ACCOUNT,
         streaming_seconds=0.02,
         total_deadline=1.0,
         shutdown_grace=0.5,
@@ -304,6 +313,7 @@ def test_demo_soak_closes_server_and_telemetry_when_attempt_factory_raises() -> 
             RaisingFactory(),
             server=server,
             telemetry=telemetry,
+            source_user=ACCOUNT,
             streaming_seconds=0.02,
             total_deadline=1.0,
             shutdown_grace=0.5,
@@ -324,10 +334,13 @@ def test_demo_soak_cli_policy_is_exact_and_preserves_existing_policy() -> None:
             "/private/evidence",
             "--hccast-executable",
             "/opt/hccast-wired",
+            "--source-user",
+            ACCOUNT,
         ]
     )
 
     assert args.operation == "run-demo-soak"
+    assert args.source_user == ACCOUNT
     assert _operation_policy("run-demo-soak") == (1200.0, 1380.0, 20.0)
     assert _operation_policy("run-kiosk-once") == (20.0, 180.0, 15.0)
     assert _connect_event("run-demo-soak") == {
@@ -336,3 +349,102 @@ def test_demo_soak_cli_policy_is_exact_and_preserves_existing_policy() -> None:
         "deadline_seconds": 1380,
         "streaming_window_seconds": 1200,
     }
+
+
+def test_checkpoint_configs_require_an_explicit_deployment_account() -> None:
+    with pytest.raises(TypeError):
+        checkpoint_config()  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        kiosk_checkpoint_config()  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        demo_soak_config("http://127.0.0.1:8877/")  # type: ignore[call-arg]
+    with pytest.raises(ValueError, match="source_user"):
+        checkpoint_config(source_user="Not A Posix Name")
+
+    assert checkpoint_config(source_user="pi").source_user == "pi"
+    assert kiosk_checkpoint_config(source_user="pi").source_user == "pi"
+    assert demo_soak_config("http://127.0.0.1:8877/", source_user="pi").source_user == "pi"
+
+
+def test_cli_requires_the_deployment_account_argument() -> None:
+    with pytest.raises(SystemExit):
+        _parser().parse_args(
+            [
+                "run-once",
+                "--expected-udc",
+                "3550000.usb",
+                "--evidence-root",
+                "/private/evidence",
+                "--hccast-executable",
+                "/opt/hccast-wired",
+            ]
+        )
+
+
+@pytest.mark.parametrize("name", ["", "Two Words", "AUser", "user!", "../root"])
+def test_validated_source_user_rejects_malformed_names_without_consulting_the_host(
+    name: str,
+) -> None:
+    consulted: list[str] = []
+
+    with pytest.raises(SystemExit, match="--source-user is invalid"):
+        validated_source_user(name, account_exists=lambda value: consulted.append(value) or True)
+
+    assert consulted == []
+
+
+def test_validated_source_user_refuses_an_account_missing_from_the_host() -> None:
+    with pytest.raises(SystemExit, match="names no account on this host"):
+        validated_source_user("stranger", account_exists=lambda _name: False)
+
+    assert validated_source_user("stranger", account_exists=lambda _name: True) == "stranger"
+
+
+def test_local_account_lookup_uses_the_host_password_database() -> None:
+    assert local_account_exists("root") is True
+    assert local_account_exists("no-such-account-for-hccast-tests") is False
+
+
+def _cli_arguments(operation: str, account: str) -> list[str]:
+    return [
+        operation,
+        "--expected-udc",
+        "3550000.usb",
+        "--evidence-root",
+        "/private/evidence",
+        "--hccast-executable",
+        "/opt/hccast-wired",
+        "--source-user",
+        account,
+    ]
+
+
+def test_main_refuses_an_unknown_account_before_building_any_factory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden_factory(_args: object) -> object:
+        raise AssertionError("no factory may be built for a refused account")
+
+    monkeypatch.setattr(checkpoint_module, "_factory", forbidden_factory)
+
+    with pytest.raises(SystemExit, match="names no account on this host"):
+        main(_cli_arguments("reconcile-only", "stranger"), account_exists=lambda _name: False)
+    with pytest.raises(SystemExit, match="--source-user is invalid"):
+        main(_cli_arguments("run-once", "Bad Name"), account_exists=lambda _name: True)
+
+
+def test_main_passes_the_validated_account_to_the_checkpoint_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    attempt = FakeAttempt(publish_streaming=True)
+    factory = FakeFactory(attempt)
+    monkeypatch.setattr(checkpoint_module, "_factory", lambda _args: factory)
+    monkeypatch.setattr(checkpoint_module, "_operation_policy", lambda _operation: (0.02, 1.0, 0.5))
+    monkeypatch.setattr(checkpoint_module.signal, "signal", lambda _signum, _handler: None)
+
+    code = main(_cli_arguments("run-once", "pi"), account_exists=lambda name: name == "pi")
+
+    assert code == 0
+    assert factory.configs == [checkpoint_config(source_user="pi")]
+    assert '"connect-data-now"' in capsys.readouterr().out

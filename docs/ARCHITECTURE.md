@@ -55,6 +55,18 @@ USB bulk endpoints available
 A successful USB write is transport evidence only. A valid parsed `SETV` is the
 HCCAST identity gate. Visible video is the rendering gate.
 
+### Access-unit framing
+
+One `VID` packet carries one access unit, and the session paces one packet per
+frame period. `iter_access_units()` in `annexb.py` groups NAL units at access
+unit delimiters when the encoder emits them (the sample encoder in
+`scripts/generate-test-pattern.sh` and GStreamer's `x264enc` do) and otherwise
+at each slice whose `first_mb_in_slice` is zero together with the SEI and
+parameter sets that precede it. Streams using arbitrary slice order are the
+documented exception and should be encoded with delimiters. `--packetization
+nal` sends and paces each NAL unit separately and is a diagnostic mode, not a
+frame-rate measurement.
+
 ## USB backend A: direct host
 
 ```text
@@ -228,6 +240,12 @@ UDC. A custom HCCAST attempt is successful only when it:
 Raspberry Pi cleanup will use the same principle but must define the expected
 stopped state for the selected Pi image instead of copying Jetson-specific
 service names.
+
+The raw CLI applies the same rule without the live supervisor. `gadget-stop`,
+`gadget-handshake` and `gadget-stream` release only the resources the
+invocation created or bound, print a structured cleanup report, and exit with
+status 4 when the UDC is still claimed, FunctionFS is still mounted or the
+gadget directory remains, instead of logging completion and returning 0.
 
 ## Platform roles
 

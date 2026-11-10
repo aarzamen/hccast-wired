@@ -128,7 +128,7 @@ proposed for these results.
 
 ## Documentation
 
-- [Scope](docs/SCOPE.md) and [Pi 500 demonstration](docs/PI500.md)
+- [Walkthrough map](ARCHITECTURE.md) (draft), [scope](docs/SCOPE.md) and [Pi 500 demonstration](docs/PI500.md)
 - [Tested hardware](docs/TESTED_HARDWARE.md) and [media assets](docs/media/README.md)
 - [Validation and claim ledger](docs/VALIDATION.md)
 - [Reference reproduction and Raspberry Pi parity](docs/REPRODUCTION.md)

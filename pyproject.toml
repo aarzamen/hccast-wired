@@ -4,7 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hccast-wired"
-version = "0.2.0"
+# The single version source is hccast_wired.__version__ (src/hccast_wired/__init__.py).
+dynamic = ["version"]
 description = "Experimental wired Linux driver for DrongScreen/HCCAST/ElfCast selfie monitors"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -21,6 +22,9 @@ hccast-wired = "hccast_wired.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.dynamic]
+version = {attr = "hccast_wired.__version__"}
 
 [tool.pytest.ini_options]
 addopts = "-q"

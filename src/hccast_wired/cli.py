@@ -12,20 +12,38 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
+from . import __version__
 from .functionfs import AOAIdentity, FunctionFSControl, FunctionFSTransport
 from .gadget import (
     AOA_ACCESSORY_PID,
     AOA_VENDOR_ID,
     DEFAULT_PRE_AOA_PRODUCT_ID,
     DEFAULT_PRE_AOA_VENDOR_ID,
+    CleanupReport,
     ConfigFSGadget,
 )
 from .host_usb import HostUSBTransport, enumerate_candidates
 from .protocol import ScreenInfo, Settings
-from .session import HCCASTSession
+from .session import HCCASTSession, validate_stream_file, validate_stream_limits
 from .setr_probe import SetrOnceClassification, run_setr_once
 
 LOG = logging.getLogger(__name__)
+
+# Exit status when the command itself ran but gadget cleanup left resources
+# behind. Distinct from 1 (command failed) and 2 (usage error) so wrappers can
+# tell "stop again or inspect" from "the stream failed".
+EXIT_CLEANUP_INCOMPLETE = 4
+
+
+def _report_cleanup(report: CleanupReport, *, operation: str) -> None:
+    """Print the structured cleanup report; failures go to stderr."""
+
+    body = json.dumps({"operation": operation, "cleanup": report.to_mapping()}, sort_keys=True, indent=2)
+    if report.success:
+        print(body)
+    else:
+        print(f"ERROR: {operation} cleanup incomplete; inspect and run gadget-stop:", file=sys.stderr)
+        print(body, file=sys.stderr)
 
 
 def _int_auto(value: str) -> int:
@@ -58,6 +76,44 @@ def _bounded_response_timeout_ms(value: str) -> int:
             "--response-timeout-ms must be between 1 and 500 milliseconds"
         )
     return timeout_ms
+
+
+def _positive_finite_fps(value: str) -> float:
+    try:
+        fps = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("--fps must be a number") from exc
+    if not math.isfinite(fps) or fps <= 0:
+        raise argparse.ArgumentTypeError("--fps must be a positive finite number")
+    return fps
+
+
+def _positive_max_packets(value: str) -> int:
+    try:
+        count = int(value, 10)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("--max-packets must be an integer") from exc
+    if count < 1:
+        raise argparse.ArgumentTypeError(
+            "--max-packets must be at least 1; 0 or a negative limit would send nothing"
+        )
+    return count
+
+
+def validate_stream_arguments(args: argparse.Namespace) -> None:
+    """Reject stream input the session could not use, before any USB setup.
+
+    Called by every streaming command ahead of opening a host transport or
+    creating a gadget, so a missing file, an unreadable file, ``--loop`` with
+    stdin, or an impossible limit costs no handshake and no transfer.
+    """
+
+    validate_stream_limits(args.fps, args.max_packets)
+    if args.file == "-":
+        if args.loop:
+            raise ValueError("--loop cannot be used with stdin")
+        return
+    validate_stream_file(args.file)
 
 
 def _configure_logging(verbose: int) -> None:
@@ -169,6 +225,7 @@ def command_host_handshake(args: argparse.Namespace) -> int:
 
 
 def command_host_stream(args: argparse.Namespace) -> int:
+    validate_stream_arguments(args)
     transport = HostUSBTransport(
         vendor_id=args.vendor_id,
         product_id=args.product_id,
@@ -251,6 +308,8 @@ def _print_aoa_identity(identity: AOAIdentity) -> None:
 
 
 def _run_gadget(args: argparse.Namespace, *, stream: bool) -> int:
+    if stream:
+        validate_stream_arguments(args)
     gadget = ConfigFSGadget(
         name=args.gadget_name,
         function_name=args.function_name,
@@ -271,6 +330,7 @@ def _run_gadget(args: argparse.Namespace, *, stream: bool) -> int:
 
     previous_sigint = signal.signal(signal.SIGINT, handle_signal)
     previous_sigterm = signal.signal(signal.SIGTERM, handle_signal)
+    cleanup_report: CleanupReport | None = None
 
     try:
         negotiate = args.aoa_mode == "negotiate"
@@ -344,7 +404,6 @@ def _run_gadget(args: argparse.Namespace, *, stream: bool) -> int:
                 )
             print("Stream complete:")
             _print_device_info(stats)
-        return 0
     finally:
         signal.signal(signal.SIGINT, previous_sigint)
         signal.signal(signal.SIGTERM, previous_sigterm)
@@ -355,9 +414,16 @@ def _run_gadget(args: argparse.Namespace, *, stream: bool) -> int:
             transport.close()
         if control is not None:
             control.close()
-        gadget.cleanup()
+        cleanup_report = gadget.cleanup()
+        if not cleanup_report.success:
+            _report_cleanup(cleanup_report, operation="gadget-stream" if stream else "gadget-handshake")
         if interrupted:
             LOG.info("interrupted cleanly")
+    # Only reached when the session itself completed; a cleanup that left the
+    # UDC, mount or gadget behind is still a failure for the operator.
+    if not cleanup_report.success:
+        return EXIT_CLEANUP_INCOMPLETE
+    return 0
 
 
 def command_gadget_handshake(args: argparse.Namespace) -> int:
@@ -369,12 +435,15 @@ def command_gadget_stream(args: argparse.Namespace) -> int:
 
 
 def command_gadget_stop(args: argparse.Namespace) -> int:
-    ConfigFSGadget.force_cleanup(
+    """Explicit stale-state removal; the report and exit status say what remains."""
+
+    report = ConfigFSGadget.force_cleanup(
         name=args.gadget_name,
         function_name=args.function_name,
         mountpoint=args.mountpoint,
     )
-    return 0
+    _report_cleanup(report, operation="gadget-stop")
+    return 0 if report.success else EXIT_CLEANUP_INCOMPLETE
 
 
 def add_common_session_options(parser: argparse.ArgumentParser) -> None:
@@ -390,10 +459,19 @@ def add_common_session_options(parser: argparse.ArgumentParser) -> None:
 
 def add_stream_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("file", help="Annex-B H.264 file, or - for stdin")
-    parser.add_argument("--fps", type=float, default=30.0)
+    parser.add_argument(
+        "--fps",
+        type=_positive_finite_fps,
+        default=30.0,
+        help="pacing rate in packets per second; must be positive and finite (default: 30)",
+    )
     parser.add_argument("--packetization", choices=("access-unit", "nal"), default="access-unit")
-    parser.add_argument("--loop", action="store_true")
-    parser.add_argument("--max-packets", type=int)
+    parser.add_argument("--loop", action="store_true", help="repeat the file; not valid with stdin")
+    parser.add_argument(
+        "--max-packets",
+        type=_positive_max_packets,
+        help="stop after exactly this many packets; must be at least 1",
+    )
 
 
 def add_host_discovery_options(parser: argparse.ArgumentParser) -> None:
@@ -450,6 +528,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="Experimental wired driver for DrongScreen/HCCAST selfie monitors",
     )
     parser.add_argument("-v", "--verbose", action="count", default=0)
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help=(
+            "print the installed driver version and exit; receiver firmware is "
+            "reported by the screen's SETV reply, PanelBridge is versioned separately"
+        ),
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     probe = sub.add_parser(
@@ -535,7 +622,13 @@ def build_parser() -> argparse.ArgumentParser:
     add_stream_options(gadget_stream)
     gadget_stream.set_defaults(func=command_gadget_stream)
 
-    stop = sub.add_parser("gadget-stop", help="remove a stale hccast ConfigFS gadget")
+    stop = sub.add_parser(
+        "gadget-stop",
+        help=(
+            "remove a stale hccast ConfigFS gadget; prints a cleanup report and exits "
+            f"{EXIT_CLEANUP_INCOMPLETE} if the UDC, mount or gadget remains"
+        ),
+    )
     stop.add_argument("--mountpoint", default="/dev/ffs-hccast")
     stop.add_argument("--gadget-name", default="hccast")
     stop.add_argument("--function-name", default="hccast")
@@ -547,6 +640,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     _configure_logging(args.verbose)
+    # Every diagnostic run records the driver version it was produced with.
+    LOG.info("hccast-wired %s running %s", __version__, args.command)
     try:
         return int(args.func(args))
     except KeyboardInterrupt:

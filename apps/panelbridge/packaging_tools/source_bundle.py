@@ -42,6 +42,7 @@ interfaces/ADVANCED.md
 interfaces/ADVANCED_OBSERVER.md
 interfaces/CALIBRATION.md
 interfaces/NETWORK_API.md
+interfaces/RELEASE.md
 interfaces/RESCUE.md
 interfaces/SESSION_API.md
 interfaces/SOURCE_BUNDLE.md
@@ -92,6 +93,7 @@ packaging_tools/build_installer.py
 packaging_tools/desktop_setup.py
 packaging_tools/install_transaction.py
 packaging_tools/maintenance.py
+packaging_tools/release.py
 packaging_tools/render_icons.py
 packaging_tools/runtime_access.py
 packaging_tools/source_bundle.py
@@ -133,6 +135,7 @@ tests/test_helper_authority.py
 tests/test_media.py
 tests/test_network_helper.py
 tests/test_output.py
+tests/test_release.py
 tests/test_rescue.py
 tests/test_rescue_service.py
 tests/test_runtime_access.py

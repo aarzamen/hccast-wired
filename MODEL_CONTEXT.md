@@ -259,7 +259,10 @@ RK-X40F gadget output, R36S, and additional screen revisions remain unverified.
 Bounded Qshot host-USB playback is `REPRODUCED` on Pi 5; see below.
 
 `LiveConfig.source_user` defaults to the neutral `hccast`. Actual deployments use
-an existing local account supplied through configuration.
+an existing local account supplied through configuration. The bounded checkpoint
+runner takes that account as a required `--source-user` argument and refuses a
+name that does not exist on the host before any operation starts; no account
+name is baked into the public source.
 
 The known wired interface accepts H.264 through HCCAST. This bridge exposes no
 DRM/KMS connector, and no pixel-addressable framebuffer transport is currently
